@@ -1,0 +1,44 @@
+[
+  {
+    "env": "GROQ_API_KEY",
+    "url": "https://console.groq.com",
+    "name": "groq",
+    "model": "groq/llama-3.3-70b-versatile"
+  },
+  {
+    "env": "GOOGLE_API_KEY",
+    "url": "https://aistudio.google.com/apikey",
+    "name": "google",
+    "model": "google/gemini-2.5-flash"
+  },
+  {
+    "env": "OPENAI_API_KEY",
+    "url": "https://platform.openai.com/api-keys",
+    "name": "openai",
+    "model": "openai/gpt-5-mini"
+  },
+  {
+    "env": "ANTHROPIC_API_KEY",
+    "url": "https://console.anthropic.com/settings/keys",
+    "name": "anthropic",
+    "model": "anthropic/claude-sonnet-5"
+  },
+  {
+    "env": "MISTRAL_API_KEY",
+    "url": "https://console.mistral.ai",
+    "name": "mistral",
+    "model": "mistral/"
+  },
+  {
+    "env": "CEREBRAS_API_KEY",
+    "url": "https://cloud.cerebras.ai",
+    "name": "cerebras",
+    "model": "cerebras/"
+  },
+  {
+    "env": "OPENROUTER_API_KEY",
+    "url": "https://openrouter.ai/settings/keys",
+    "name": "openrouter",
+    "model": "openrouter/"
+  }
+]
