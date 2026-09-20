@@ -10,7 +10,7 @@
     },
     {
       "name": "backup-util",
-      "latest": "0.1.0"
+      "latest": "0.1.1"
     },
     {
       "name": "doc-extract",
@@ -30,7 +30,7 @@
     },
     {
       "name": "resolve-tools",
-      "latest": "0.1.0"
+      "latest": "0.1.1"
     },
     {
       "name": "vmdisk",
