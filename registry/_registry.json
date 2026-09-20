@@ -4,13 +4,38 @@
   "defaultChannel": "stable",
   "repository": "https://github.com/Lab-100/invr-tools.git",
   "tools": [
-    { "name": "ai-provider-check", "latest": "0.1.0" },
-    { "name": "backup-util",       "latest": "0.1.0" },
-    { "name": "doc-extract",       "latest": "0.1.0" },
-    { "name": "firecrawl-key",     "latest": "0.1.0" },
-    { "name": "gordon",            "latest": "0.1.0" },
-    { "name": "llm-mcp",           "latest": "0.1.0" },
-    { "name": "vmdisk",            "latest": "0.1.0" }
+    {
+      "name": "ai-provider-check",
+      "latest": "0.1.0"
+    },
+    {
+      "name": "backup-util",
+      "latest": "0.1.0"
+    },
+    {
+      "name": "doc-extract",
+      "latest": "0.1.0"
+    },
+    {
+      "name": "firecrawl-key",
+      "latest": "0.1.0"
+    },
+    {
+      "name": "gordon",
+      "latest": "0.1.0"
+    },
+    {
+      "name": "llm-mcp",
+      "latest": "0.1.0"
+    },
+    {
+      "name": "resolve-tools",
+      "latest": "0.1.0"
+    },
+    {
+      "name": "vmdisk",
+      "latest": "0.1.0"
+    }
   ],
   "lastUpdated": "2026-09-20"
 }
