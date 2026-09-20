@@ -1,0 +1,15 @@
+{
+  "schema": "inrv.tool/1",
+  "name": "backup-util",
+  "version": "0.1.0",
+  "description": "Каталог откатов E:\\rollback-catalog: backup/list/undo с restore-скриптами",
+  "entry": "backup-util.ps1",
+  "type": "script",
+  "requires": { "pwsh": ">=7.0" },
+  "dependencies": [],
+  "interfaces": {
+    "cli": { "invoke": "pwsh -File {entry}", "commands": ["backup", "list", "undo", "init"] }
+  },
+  "compat": { "breaks": [] },
+  "published": "2026-09-20"
+}

@@ -1,0 +1,15 @@
+{
+  "schema": "inrv.tool/1",
+  "name": "ai-provider-check",
+  "version": "0.1.0",
+  "description": "Проверка доступности облачных LLM-провайдеров по ключам (409/401/429) и локальной Ollama",
+  "entry": "ai-provider-check.ps1",
+  "type": "script",
+  "requires": { "pwsh": ">=7.0", "curl": "any" },
+  "dependencies": [],
+  "interfaces": {
+    "cli": { "invoke": "pwsh -File {entry}", "commands": ["-"] }
+  },
+  "compat": { "breaks": [] },
+  "published": "2026-09-20"
+}

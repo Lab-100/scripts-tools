@@ -1,0 +1,16 @@
+{
+  "schema": "inrv.tool/1",
+  "name": "llm-mcp",
+  "version": "0.1.0",
+  "description": "MCP-сервер для локальных LLM (llm_mcp_server.py + requirements, venv генерируется при первом запуске)",
+  "entry": "llm_mcp_server.py",
+  "type": "bundle",
+  "requires": { "python": ">=3.10", "pip": "any" },
+  "dependencies": [],
+  "interfaces": {
+    "setup": { "invoke": "python -m venv .venv-mcp && pip install -r requirements.txt" },
+    "mcp": { "entry": "llm_mcp_server.py" }
+  },
+  "compat": { "breaks": [] },
+  "published": "2026-09-20"
+}
