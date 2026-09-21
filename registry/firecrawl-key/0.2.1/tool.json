@@ -1,0 +1,25 @@
+{
+  "schema": "inrv.tool/1",
+  "name": "firecrawl-key",
+  "version": "0.2.1",
+  "description": "Получение/ротация FIRECRAWL_API_KEY (ссылка Authorize + poll) в User env",
+  "entry": "firecrawl-key.ps1",
+  "type": "script",
+  "requires": {
+    "pwsh": ">=7.0"
+  },
+  "dependencies": [],
+  "interfaces": {
+    "cli": {
+      "invoke": "pwsh -File {entry}",
+      "commands": [
+        "init",
+        "poll"
+      ]
+    }
+  },
+  "compat": {
+    "breaks": []
+  },
+  "published": "2026-09-21"
+}

@@ -1,0 +1,30 @@
+{
+  "schema": "inrv.tool/1",
+  "name": "resolve-tools",
+  "version": "0.2.0",
+  "description": "INVR-Tools локер: init/status/link/update/purge, semver-диапазоны, junction кросс-том, режим dist-проектов",
+  "entry": "resolve-tools.ps1",
+  "type": "script",
+  "requires": {
+    "pwsh": ">=7.0"
+  },
+  "dependencies": [],
+  "interfaces": {
+    "cli": {
+      "invoke": "pwsh -File {entry}",
+      "commands": [
+        "init",
+        "status",
+        "link",
+        "update",
+        "purge"
+      ]
+    }
+  },
+  "compat": {
+    "breaks": [
+      "0.1.0"
+    ]
+  },
+  "published": "2026-09-20"
+}

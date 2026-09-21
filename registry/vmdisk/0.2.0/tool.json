@@ -1,0 +1,29 @@
+{
+  "schema": "inrv.tool/1",
+  "name": "vmdisk",
+  "version": "0.2.0",
+  "description": "Управление виртуальными дисками с меткой .devstation-created и стражем (манифест+размер)",
+  "entry": "vmdisk.ps1",
+  "type": "script",
+  "requires": {
+    "pwsh": ">=7.0",
+    "hyperv": "module"
+  },
+  "dependencies": [],
+  "interfaces": {
+    "cli": {
+      "invoke": "pwsh -File {entry}",
+      "commands": [
+        "new-vmdisk",
+        "list",
+        "inspect",
+        "mark",
+        "remove"
+      ]
+    }
+  },
+  "compat": {
+    "breaks": []
+  },
+  "published": "2026-09-20"
+}

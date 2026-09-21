@@ -6,23 +6,23 @@
   "tools": [
     {
       "name": "ai-provider-check",
-      "latest": "0.1.0"
+      "latest": "0.2.0"
     },
     {
       "name": "backup-util",
-      "latest": "0.1.1"
+      "latest": "0.2.1"
     },
     {
       "name": "doc-extract",
-      "latest": "0.1.0"
+      "latest": "0.2.0"
     },
     {
       "name": "firecrawl-key",
-      "latest": "0.1.0"
+      "latest": "0.2.1"
     },
     {
       "name": "gordon",
-      "latest": "0.1.0"
+      "latest": "0.2.1"
     },
     {
       "name": "llm-mcp",
@@ -30,12 +30,12 @@
     },
     {
       "name": "resolve-tools",
-      "latest": "0.1.1"
+      "latest": "0.2.1"
     },
     {
       "name": "vmdisk",
-      "latest": "0.1.0"
+      "latest": "0.2.0"
     }
   ],
-  "lastUpdated": "2026-09-20"
+  "lastUpdated": "2026-09-21"
 }

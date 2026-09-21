@@ -25,8 +25,7 @@ param(
     [string]$Project = (Get-Location),
     [string]$Registry = '',
     [switch]$DryRun,
-    [switch]$NoPull,
-    [switch]$GenerateShims
+    [switch]$NoPull
 )
 # UTF-8 console default (no krakozyabry)
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
@@ -187,37 +186,6 @@ function Remove-Link { param([string]$link)
     }
 }
 
-function Install-Shim { param([string]$tool, [string]$version)
-    $regToolDir = Join-Path $registryRoot "$tool\$version"
-    $regBase = $registryRoot
-    $linkParent = Join-Path $projectRoot $linkRootName
-    $ps1files = Get-ChildItem -LiteralPath $regToolDir -File -Filter '*.ps1' -ErrorAction SilentlyContinue
-    if (-not $ps1files) { return }
-    foreach ($f in $ps1files) {
-        $shimName = $f.Name
-        $shimPath = Join-Path $linkParent $shimName
-        if (Test-Path -LiteralPath $shimPath) {
-            $head = Get-Content -LiteralPath $shimPath -TotalCount 1 -ErrorAction SilentlyContinue
-            if ($head -match 'INVR-Tools shim') { continue }
-            Write-Host "  ! пропущен шим ${shimName}: на месте обычный файл (переноси как инструмент в реестр)" -ForegroundColor Yellow
-            continue
-        }
-        $content = @"
-# INVR-Tools shim (автоген локера): вызывает версию из реестра по latest.txt.
-# ДЕЛАТЬ РУКАМИ В ШИМ НЕЛЬЗЯ — изменения в registry\<tool>\<version>\.
-`$tool  = '$tool'
-`$entry = '$shimName'
-`$latest = (Get-Content (Join-Path '$regBase' "\`$tool\latest.txt") -Raw).Trim()
-`$target = Join-Path '$regBase' "\`$tool\`$latest\`$entry"
-if (-not (Test-Path -LiteralPath `$target)) { throw "INVR: нет `$tool версии `$latest (запусти resolve-tools.ps1 update)" }
-& `$target @args
-exit `$LASTEXITCODE
-"@
-        Set-Content -LiteralPath $shimPath -Value $content -Encoding utf8
-        Write-Host "  shim: $shimName -> registry\$tool\<latest>" -ForegroundColor Cyan
-    }
-}
-
 function Install-Link { param([string]$tool, [string]$version)
     $regToolDir = Join-Path $registryRoot "$tool\$version"
     if (-not (Test-Path -LiteralPath $regToolDir)) { throw "Нет каталога реестра: $regToolDir" }
@@ -329,7 +297,6 @@ switch ($Action) {
             $tool = $prop.Name; $range = $prop.Value
             $v = Resolve-Tool $tool $range
             Install-Link $tool $v
-            if ($GenerateShims) { Install-Shim $tool $v }
         }
         if ($DryRun) { Write-Host "DRY-RUN: реальных изменений не внесено" -ForegroundColor Yellow }
     }
@@ -357,14 +324,6 @@ switch ($Action) {
                 # .inrv — удаляем только сам каталог state (файлы)
             } else {
                 Write-Host "  оставлено (не линк): $($_.Name)"
-            }
-        }
-        # удалить автоген-шимы (только с нашей меткой)
-        Get-ChildItem $toolsDir -File -Filter '*.ps1' -ErrorAction SilentlyContinue | ForEach-Object {
-            $first = Get-Content -LiteralPath $_.FullName -TotalCount 1 -ErrorAction SilentlyContinue
-            if ($first -match 'INVR-Tools shim') {
-                Remove-Item -LiteralPath $_.FullName -Force
-                Write-Host "  удалён шим: $($_.Name)"
             }
         }
         $stateDir = Join-Path $toolsDir $stateDirName
