@@ -1,0 +1,27 @@
+{
+  "schema": "inrv.tool/1",
+  "name": "llm-mcp",
+  "version": "0.2.0",
+  "description": "MCP-сервер для локальных LLM (llm_mcp_server.py + requirements, venv создаётся на стороне проекта)",
+  "entry": "llm_mcp_server.py",
+  "type": "bundle",
+  "requires": {
+    "python": ">=3.10",
+    "pip": "any",
+    "ollama": "localhost:11434"
+  },
+  "dependencies": [],
+  "interfaces": {
+    "setup": {
+      "invoke": "python -m venv .venv-mcp && pip install -r requirements.txt"
+    },
+    "mcp": {
+      "entry": "llm_mcp_server.py"
+    }
+  },
+  "compat": {
+    "breaks": []
+  },
+  "notes": "0.2.0: канон объединяет версии hermes-project/scripts (реальные пути) и 0.1.0 (env-конфигурируемость). Проекты подключают линком tools\\llm-mcp.",
+  "published": "2026-09-21"
+}

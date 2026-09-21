@@ -1,0 +1,8 @@
+{
+  "providers": {
+    "gemini": {
+      "enabled": false,
+      "note": "Геоблокирован Google для РФ (400 User location is not supported). Включить: enabled: true (нужен VPN/прокси в поддерживаемом регионе)"
+    }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "schema": "inrv.tool/1",
+  "name": "doc-extract",
+  "version": "0.3.0",
+  "description": "Облачный OCR/парсинг локальных документов (PDF/HTML/DOCX/XLSX) пул провайдеров + судья + локальная OCR (tesseract)",
+  "entry": "doc-extract.ps1",
+  "type": "bundle",
+  "requires": {
+    "pwsh": ">=7.0",
+    "firecrawl": "cli",
+    "xparse": "cli",
+    "tesseract": "cli"
+  },
+  "dependencies": [],
+  "interfaces": {
+    "cli": {
+      "invoke": "pwsh -File {entry}",
+      "commands": [
+        "analyze",
+        "process",
+        "judge",
+        "auto"
+      ]
+    }
+  },
+  "compat": {
+    "breaks": []
+  },
+  "published": "2026-09-21"
+}
