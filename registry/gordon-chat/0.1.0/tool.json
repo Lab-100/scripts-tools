@@ -1,0 +1,9 @@
+{
+  "name": "gordon-chat",
+  "version": "0.1.0",
+  "description": "Программный диалог с облачным ИИ «Гордон» из Docker Desktop (Claude, лимиты Gordon Base tier) через named pipe API docker-agent. Режимы: -Ask (продолжает сохранённую сессию), -Sessions, -SessionId, -Model, -ResetSession.",
+  "entry": "gordon-chat.ps1",
+  "platform": ["windows"],
+  "requires": ["docker-agent.exe running (Docker Desktop)"],
+  "published": "2026-09-25"
+}
