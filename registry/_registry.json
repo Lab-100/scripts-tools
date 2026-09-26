@@ -46,7 +46,7 @@
     },
     {
       "name": "opencode-monitor",
-      "latest": "0.3.0"
+      "latest": "0.4.0"
     },
     {
       "name": "opencode-plugins",
@@ -54,11 +54,11 @@
     },
     {
       "name": "opencode-status",
-      "latest": "0.3.0"
+      "latest": "0.4.0"
     },
     {
       "name": "resolve-tools",
-      "latest": "0.2.1"
+      "latest": "0.5.0"
     },
     {
       "name": "vmdisk",
@@ -67,4 +67,3 @@
   ],
   "lastUpdated": "2026-09-26"
 }
-

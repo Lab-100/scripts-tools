@@ -10,3 +10,6 @@ browsertool/
 mcp-watchdog/
 state/
 *.positions.json
+
+# runtime-логи версий инструментов
+*.err.log

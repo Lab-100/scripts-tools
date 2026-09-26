@@ -14,14 +14,13 @@
     "firecrawl-key": "0.2.x",
     "gordon": "0.3.x",
     "gordon-chat": "0.2.x",
-    "infra-graph": "0.4.x",
+    "infra-graph": "0.6.x",
     "llm-mcp": "0.2.x",
     "mcp-watchdog": "0.2.x",
-    "opencode-monitor": "0.3.x",
-    "opencode-plugins": "0.4.x",
-    "opencode-status": "0.3.x",
-    "resolve-tools": "0.2.x",
+    "opencode-monitor": "0.4.x",
+    "opencode-plugins": "0.5.x",
+    "opencode-status": "0.4.x",
+    "resolve-tools": "0.3.x",
     "vmdisk": "0.2.x"
   }
 }
-

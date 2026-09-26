@@ -1,0 +1,24 @@
+{
+  "schema": "invr.tool/1",
+  "name": "opencode-monitor",
+  "version": "0.4.0",
+  "description": "Оперативный монитор оркестратора opencode: окно с хвостом лога opencode и статусом процессов/модели/агентов, сворачивается в трей",
+  "entry": "opencode-monitor.ps1",
+  "type": "script",
+  "requires": {
+    "pwsh": ">=7.0"
+  },
+  "dependencies": [],
+  "interfaces": {
+    "cli": {
+      "invoke": "pwsh -File {entry}",
+      "commands": [
+        "gui"
+      ]
+    }
+  },
+  "compat": {
+    "breaks": []
+  },
+  "published": "2026-09-26"
+}
