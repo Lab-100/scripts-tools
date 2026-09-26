@@ -21,6 +21,7 @@ Add-Type -AssemblyName System.Drawing
 $off = [System.Text.Encoding]::UTF8
 $LogPath = Join-Path $env:USERPROFILE '.local\share\opencode\log\opencode.log'
 $WdPath  = 'C:\Scripts\tools\mcp-watchdog\state\current.json'
+$WdLog   = 'C:\Scripts\Logs\mcp-watchdog.log'
 
 # ---------- сбор статусов ----------
 function Get-NodeStatus {
@@ -249,6 +250,7 @@ $script:edgeLast = @{}    # ребро "from|to" -> @{ Dir=1|-1; Last=[DateTime]
 $script:snakes = @()      # активные змейки-импульсы (по одной на запрос/ответ):
                           # @{ E='from|to'; Dir=1|-1; Start=[DateTime] }
 $script:edgeCursor = $null  # последний обработанный timestamp лога (дедуп событий)
+$script:wdCursor   = $null  # то же для лога демона-стража (встречный трафик в граф)
 $script:PosFile = Join-Path $PSScriptRoot 'infra-graph.positions.json'   # запоминание ручной раскладки
 
 # шрифты и измерительная графика (рамки узлов считаются по тексту)
@@ -503,6 +505,50 @@ function Update-EdgeActivity {
   } elseif (-not $script:edgeCursor) {
     $script:edgeCursor = (Get-Date)
   }
+
+  # --- встречный трафик "объект -> демон-страж" по логу самого демона ---
+  # каждая строка CHECK/WARN по конкретному серверу = сервер передал демону свой статус,
+  # поэтому змейка летит ОТ сервера К демону (reverse ctl-ребра "watchdog|server").
+  if (Test-Path $WdLog) {
+    try {
+      $wfs = [System.IO.File]::Open($WdLog, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+      try {
+        $wfs.Seek(-([Math]::Min(200000, $wfs.Length)), [System.IO.SeekOrigin]::End) | Out-Null
+        $wsr = New-Object System.IO.StreamReader($wfs, $off)
+        $wtail = $wsr.ReadToEnd()
+      } finally { $wsr.Dispose(); $wfs.Dispose() }
+    } catch { $wtail = '' }
+
+    $wdFoundTs = $null
+    # соответствие имени сервера в логе демона -> id узла графа
+    $wdNodes = @{ 'local-llm'='local-llm'; 'firecrawl'='firecrawl'; 'MCP_DOCKER'='MCP_DOCKER';
+                  'ollama'='ollama'; 'browsertool'='browsertool'; 'docker'='docker'; 'lab'='lab' }
+    foreach ($wline in ($wtail -split "`r?`n")) {
+      if ($wline -notmatch '\[(CHECK|WARN|ERROR)\]') { continue }
+      $wTm = [regex]::Match($wline, '\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]')
+      if (-not $wTm.Success) { continue }
+      $wts = $null
+      try { $wts = [datetime]::ParseExact($wTm.Groups[1].Value, 'yyyy-MM-dd HH:mm:ss', $null) } catch { continue }
+      if ($wts -lt ((Get-Date).AddMinutes(-5))) { continue }
+      if ($script:wdCursor -and $wts -le $script:wdCursor) { continue }
+      if (-not $wdFoundTs -or $wts -gt $wdFoundTs) { $wdFoundTs = $wts }
+
+      $wSrv = [regex]::Match($wline, '\] (local-llm|firecrawl|MCP_DOCKER|ollama|browsertool|docker|lab)\s*:')
+      if (-not $wSrv.Success) { continue }
+      $node = $wdNodes[$wSrv.Groups[1].Value]
+      if (-not $node) { continue }
+      # объект сообщил демону: поток от объекта к демону (Dir=-1 на "watchdog|объект")
+      $key = "watchdog|$node"
+      $script:edgeLast[$key] = @{ Dir = -1; Last = $wts }
+      $script:snakes += @{ E = $key; Dir = -1; Start = $wts }
+    }
+    if ($wdFoundTs) {
+      if (-not $script:wdCursor -or $wdFoundTs -gt $script:wdCursor) { $script:wdCursor = $wdFoundTs }
+    } elseif (-not $script:wdCursor) {
+      $script:wdCursor = (Get-Date)
+    }
+  }
+
   # выкидываем отжившие змейки (старше 5 с) — пул не растёт
   $cut = (Get-Date).AddSeconds(-5)
   $script:snakes = @($script:snakes | Where-Object { $_.Start -ge $cut })
