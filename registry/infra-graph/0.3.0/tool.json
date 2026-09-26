@@ -1,0 +1,27 @@
+{
+  "schema": "invr.tool/1",
+  "name": "infra-graph",
+  "version": "0.3.0",
+  "description": "GUI-карта инфраструктуры оркестратора: сессии opencode, провайдеры моделей, MCP-серверы, сервисы (ollama/docker/browsertool), пул Lab100, каталог отката, GitHub. Читает mcp-watchdog\\state\\current.json",
+  "entry": "infra-graph.ps1",
+  "type": "script",
+  "requires": {
+    "pwsh": ">=7.0"
+  },
+  "dependencies": [
+    "mcp-watchdog"
+  ],
+  "interfaces": {
+    "cli": {
+      "invoke": "pwsh -STA -File {entry}",
+      "commands": [
+        "gui",
+        "Headless"
+      ]
+    }
+  },
+  "compat": {
+    "breaks": []
+  },
+  "published": "2026-09-26"
+}

@@ -1,8 +1,8 @@
 {
   "registryName": "invr-tools",
-  "schema": "inrv.registry/1",
+  "schema": "invr.registry/1",
   "defaultChannel": "stable",
-  "repository": "https://github.com/Lab-100/invr-tools.git",
+  "repository": "https://github.com/Lab-100/scripts-tools.git",
   "tools": [
     {
       "name": "ai-provider-check",
@@ -11,6 +11,10 @@
     {
       "name": "backup-util",
       "latest": "0.2.1"
+    },
+    {
+      "name": "browsertool",
+      "latest": "0.1.0"
     },
     {
       "name": "doc-extract",
@@ -22,11 +26,35 @@
     },
     {
       "name": "gordon",
-      "latest": "0.2.2"
+      "latest": "0.3.0"
+    },
+    {
+      "name": "gordon-chat",
+      "latest": "0.2.0"
+    },
+    {
+      "name": "infra-graph",
+      "latest": "0.4.0"
     },
     {
       "name": "llm-mcp",
       "latest": "0.2.0"
+    },
+    {
+      "name": "mcp-watchdog",
+      "latest": "0.2.0"
+    },
+    {
+      "name": "opencode-monitor",
+      "latest": "0.3.0"
+    },
+    {
+      "name": "opencode-plugins",
+      "latest": "0.4.0"
+    },
+    {
+      "name": "opencode-status",
+      "latest": "0.3.0"
     },
     {
       "name": "resolve-tools",
@@ -37,5 +65,6 @@
       "latest": "0.2.0"
     }
   ],
-  "lastUpdated": "2026-09-21"
+  "lastUpdated": "2026-09-26"
 }
+

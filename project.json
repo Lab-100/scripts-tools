@@ -1,0 +1,27 @@
+{
+  "schema": "invr.project/1",
+  "name": "scripts-tools",
+  "version": "0.4.0",
+  "description": "Реестр версий инструментов оркестрации INVR (паттерн registry/<tool>/<version> + tool.json + latest.txt), плоские шимы C:\\Scripts\\tools\\*.ps1 и локер resolve-tools",
+  "owner": "Lab-100",
+  "privacy": "private",
+  "mode": "source",
+  "tools": {
+    "ai-provider-check": "0.2.x",
+    "backup-util": "0.2.x",
+    "browsertool": "0.1.x",
+    "doc-extract": "0.3.x",
+    "firecrawl-key": "0.2.x",
+    "gordon": "0.3.x",
+    "gordon-chat": "0.2.x",
+    "infra-graph": "0.4.x",
+    "llm-mcp": "0.2.x",
+    "mcp-watchdog": "0.2.x",
+    "opencode-monitor": "0.3.x",
+    "opencode-plugins": "0.4.x",
+    "opencode-status": "0.3.x",
+    "resolve-tools": "0.2.x",
+    "vmdisk": "0.2.x"
+  }
+}
+

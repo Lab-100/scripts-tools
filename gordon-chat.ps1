@@ -1,9 +1,9 @@
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$ErrorActionPreference = 'Stop'
-$tool = 'gordon-chat'
-$registry = 'C:\Scripts\tools\registry'
-$latestFile = Join-Path $registry "$tool\latest.txt"
-$version = (Get-Content -LiteralPath $latestFile -Raw).Trim()
-$entry = Join-Path $registry "$tool\$version\$tool.ps1"
-& $entry @args
+# INVR-Tools shim (автоген локера): вызывает версию из реестра по latest.txt.
+# ДЕЛАТЬ РУКАМИ В ШИМ НЕЛЬЗЯ — изменения в registry\<tool>\<version>\.
+$tool  = 'gordon-chat'
+$entry = 'gordon-chat.ps1'
+$latest = (Get-Content (Join-Path 'C:\Scripts\tools\registry' "\$tool\latest.txt") -Raw).Trim()
+$target = Join-Path 'C:\Scripts\tools\registry' "\$tool\$latest\$entry"
+if (-not (Test-Path -LiteralPath $target)) { throw "INVR: нет $tool версии $latest (запусти resolve-tools.ps1 update)" }
+& $target @args
 exit $LASTEXITCODE

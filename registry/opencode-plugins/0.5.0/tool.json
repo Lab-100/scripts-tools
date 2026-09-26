@@ -1,0 +1,32 @@
+{
+  "schema": "invr.tool/1",
+  "name": "opencode-plugins",
+  "version": "0.5.0",
+  "description": "Плагины opencode: принудительный русский язык, запрет кракозябр, авто-UTF8 в консоли, статус-баннер инфраструктуры. Установщик раскладывает *.js в .opencode\\plugins и генерирует cmd-шимы мониторов",
+  "entry": "opencode-plugins-install.ps1",
+  "type": "script",
+  "requires": {
+    "pwsh": ">=7.0"
+  },
+  "dependencies": [
+    "infra-graph",
+    "opencode-status",
+    "opencode-monitor"
+  ],
+  "interfaces": {
+    "cli": {
+      "invoke": "pwsh -File {entry}",
+      "commands": [
+        "install",
+        "CheckOnly",
+        "DryRun"
+      ]
+    }
+  },
+  "compat": {
+    "breaks": []
+  },
+  "published": "2026-09-26"
+}
+
+
