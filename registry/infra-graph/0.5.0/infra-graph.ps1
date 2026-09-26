@@ -6,13 +6,15 @@
   Индикация на узле: работает/запущен/завис/остановлен + время работы.
   Сворачивается в трей. Запускать В ИНТЕРАКТИВНОЙ СЕССИИ (из opencode окна не видны).
   Режимы:
-    без аргументов   - GUI-окно с графом и треем
+    без аргументов   - GUI-окно с графом и треем (одна консоль прячется)
+    -KeepConsole     - не прятать консоль (запуск из собственного терминала)
     -Status          - разовый текстовый статус всех узлов (для проверки)
     -Shot <png>      - отрисовать граф в PNG (offline-рендер, можно звать из opencode)
 #>
 param(
   [switch]$Status,
-  [string]$Shot
+  [string]$Shot,
+  [switch]$KeepConsole
 )
 
 Add-Type -AssemblyName System.Windows.Forms
@@ -248,16 +250,21 @@ $script:PosFrac = $null   # id -> @{ Xf; Yf } (доли сцены; ресайз
 $script:animT  = 0.0      # фаза анимации (змейки/пульс) по рёбрам
 $script:edgeLast = @{}    # ребро "from|to" -> @{ Dir=1|-1; Last=[DateTime] } (последний реальный трафик)
 $script:snakes = @()      # активные змейки-импульсы (по одной на запрос/ответ):
-                          # @{ E='from|to'; Dir=1|-1; Start=[DateTime] }
+                          # @{ E='from|to'; Dir=1|-1; Start=[DateTime]; Sleep=0.0 (задержка старта) }
 $script:edgeCursor = $null  # последний обработанный timestamp лога (дедуп событий)
 $script:wdCursor   = $null  # то же для лога демона-стража (встречный трафик в граф)
+$script:waking     = @{}    # id узла -> @{ Since=[DateTime] } — агенты, которых вотчдог включает
 
 # ---------- актуальность узлов (агентов/сервисов) ----------
-# id -> @{ Val=1.0;  Busy=$false; LastReply=[DateTime] }
-# Val: 100% на старте; затухание -16%/мин (мин 20%); обращение x1.4 (кум.);
-# пока агент "работает" (Busy) значения стоят; отключение при Val<=0.20.
+# id -> @{ Val=1.0; Busy=$false; LastReply=[DateTime]; Count=0 }
+# Val: 100% на старте; затухание 0.5%/с (1% за 2с), пол 0% (off ТОЛЬКО при 0);
+# обращение x1.4 (кум.); пока агент "работает" (Busy) значения стоят; отключение при Val<=0.005.
+# НЕ-агенты (инструменты оркестратора: rollback-каталог, gh-гитхаб) НЕ гаснут:
+# минимум 50% ("пол-яркости"), при обращении яркость растёт, под узлом — число обращений.
 $script:act = @{}
 $script:actTick = (Get-Date)
+$script:alarm = @{}   # id узла -> когда последний раз слали оркестратору сигнал «нет ответа/ошибка»
+$script:tools = @('rollback','gh')   # НЕ-агенты: инструменты оркестратора (не гаснут до 0)
 $script:PosFile = Join-Path $PSScriptRoot 'infra-graph.positions.json'   # запоминание ручной раскладки
 
 # шрифты и измерительная графика (рамки узлов считаются по тексту)
@@ -448,11 +455,11 @@ function Update-EdgeActivity {
         $key = "oc|$node"
         $script:edgeLast[$key] = @{ Dir = -1; Last = $ts }
         $script:snakes += @{ E = $key; Dir = -1; Start = $ts }
-        Touch-NodeAct $node
+        Apply-EdgeAct $key -1
         if ($node -eq 'ollama-prov') {
           $script:edgeLast['ollama-prov|ollama'] = @{ Dir = -1; Last = $ts }
           $script:snakes += @{ E = 'ollama-prov|ollama'; Dir = -1; Start = $ts }
-          Touch-NodeAct 'ollama'
+          Apply-EdgeAct 'ollama-prov|ollama' -1
         }
       }
     }
@@ -464,11 +471,11 @@ function Update-EdgeActivity {
         $key = "oc|$node"
         $script:edgeLast[$key] = @{ Dir = 1; Last = $ts }
         $script:snakes += @{ E = $key; Dir = 1; Start = $ts }
-        Touch-NodeAct $node -Request
+        Apply-EdgeAct $key 1
         if ($node -eq 'ollama-prov') {
           $script:edgeLast['ollama-prov|ollama'] = @{ Dir = 1; Last = $ts }
           $script:snakes += @{ E = 'ollama-prov|ollama'; Dir = 1; Start = $ts }
-          Touch-NodeAct 'ollama' -Request
+          Apply-EdgeAct 'ollama-prov|ollama' 1
         }
       }
     }
@@ -478,21 +485,21 @@ function Update-EdgeActivity {
       if ($tool -like 'firecrawl_*') {
         $script:edgeLast['oc|firecrawl'] = @{ Dir = 1; Last = $ts }
         $script:snakes += @{ E = 'oc|firecrawl'; Dir = 1; Start = $ts }
-        Touch-NodeAct 'firecrawl' -Request
+        Apply-EdgeAct 'oc|firecrawl' 1
       } elseif ($tool -like 'MCP_DOCKER_*') {
         $script:edgeLast['oc|MCP_DOCKER'] = @{ Dir = 1; Last = $ts }
         $script:snakes += @{ E = 'oc|MCP_DOCKER'; Dir = 1; Start = $ts }
         $script:edgeLast['MCP_DOCKER|docker'] = @{ Dir = 1; Last = $ts }
         $script:snakes += @{ E = 'MCP_DOCKER|docker'; Dir = 1; Start = $ts }
-        Touch-NodeAct 'MCP_DOCKER' -Request
-        Touch-NodeAct 'docker' -Request
+        Apply-EdgeAct 'oc|MCP_DOCKER' 1
+        Apply-EdgeAct 'MCP_DOCKER|docker' 1
       } elseif ($tool -like 'local-llm_*') {
         $script:edgeLast['oc|local-llm'] = @{ Dir = 1; Last = $ts }
         $script:snakes += @{ E = 'oc|local-llm'; Dir = 1; Start = $ts }
         $script:edgeLast['local-llm|ollama'] = @{ Dir = 1; Last = $ts }
         $script:snakes += @{ E = 'local-llm|ollama'; Dir = 1; Start = $ts }
-        Touch-NodeAct 'local-llm' -Request
-        Touch-NodeAct 'ollama' -Request
+        Apply-EdgeAct 'oc|local-llm' 1
+        Apply-EdgeAct 'local-llm|ollama' 1
       }
     }
     # --- MCP-сервер отработал (server log): ответ обратно ---
@@ -503,16 +510,16 @@ function Update-EdgeActivity {
         $key = "oc|$node"
         $script:edgeLast[$key] = @{ Dir = -1; Last = $ts }
         $script:snakes += @{ E = $key; Dir = -1; Start = $ts }
-        Touch-NodeAct $node
+        Apply-EdgeAct $key -1
         if ($node -eq 'MCP_DOCKER') {
           $script:edgeLast['MCP_DOCKER|docker'] = @{ Dir = -1; Last = $ts }
           $script:snakes += @{ E = 'MCP_DOCKER|docker'; Dir = -1; Start = $ts }
-          Touch-NodeAct 'docker'
+          Apply-EdgeAct 'MCP_DOCKER|docker' -1
         }
         if ($node -eq 'local-llm') {
           $script:edgeLast['local-llm|ollama'] = @{ Dir = -1; Last = $ts }
           $script:snakes += @{ E = 'local-llm|ollama'; Dir = -1; Start = $ts }
-          Touch-NodeAct 'ollama'
+          Apply-EdgeAct 'local-llm|ollama' -1
         }
       }
     }
@@ -558,14 +565,51 @@ function Update-EdgeActivity {
       if (-not $node) { continue }
       $key = "watchdog|$node"
       $nowW = Get-Date
+      $isOk = ($wline -match '\] \[?CHECK' -or $wline -match 'CHECK.*: OK')
       # рутинный CHECK: сервер передал демону статус -> встречная змейка от объекта к демону
       $script:edgeLast[$key] = @{ Dir = -1; Last = $nowW }
       $script:snakes += @{ E = $key; Dir = -1; Start = $nowW }
       # WARN/ERROR/автодействие демона: молния ОТ демона К агенту (сброс/подъём/перезапуск)
-      if ($wline -match '\[(WARN|ERROR)\]' -or $wline -match 'auto|поднима|перезапуск|запуск|убит|restart|start') {
+      # НЕ повышает актуальность: мониторинговые запросы вотчдога не считаются работой агента
+      if (-not $isOk) {
         $script:edgeLast[$key] = @{ Dir = 1; Last = $nowW }
         $script:snakes += @{ E = $key; Dir = 1; Start = $nowW }
-        Touch-NodeAct $node -Request
+        # WARN/ERROR: фиксируем ошибку узла (эпизод не удваиваем, пока не закрыт)
+        if (-not $script:act.ContainsKey($node)) { $script:act[$node] = New-ActEntry }
+        $aN = $script:act[$node]
+        if (-not $aN.Fault) { $aN.Fault = $true; $aN.Err = $aN.Err + 1 }
+        # демон получил ошибку/нет ответа -> инфо оркестратору (прими решение):
+        # молния watchdog -> oc; если на агенте была свежая работа (<=5 с) и она оборвалась —
+        # оркестратор тут же подключается к вотчдогу узнать причину (молния oc -> watchdog)
+        $freshWork = $false
+        foreach ($rk in @($script:edgeLast.Keys)) {
+          if ($rk -like "watchdog|*") { continue }
+          if ($rk -notlike "*|$node") { continue }
+          if (((Get-Date) - $script:edgeLast[$rk].Last).TotalSeconds -lt 5) { $freshWork = $true; break }
+        }
+        if ($script:alarm[$node] -and ((Get-Date) - $script:alarm[$node]).TotalSeconds -lt 15) {
+          # сигнал по этому же узлу недавно уже слали — не спамим
+        } else {
+          $script:alarm[$node] = $nowW
+          Add-Snake "watchdog|oc" 1 0.2 $true
+          $script:edgeLast["watchdog|oc"] = @{ Dir = 1; Last = $nowW }
+        }
+        if ($freshWork) {
+          Add-Snake "watchdog|oc" -1 0.5
+          $script:edgeLast["watchdog|oc"] = @{ Dir = -1; Last = $nowW }
+        }
+      } elseif ($script:act.ContainsKey($node)) {
+        # узел вернулся в норму (CHECK OK) — ошибка решена
+        $aN = $script:act[$node]
+        if ($aN.Fault) { $aN.Fault = $false; $aN.Resolved = $aN.Resolved + 1 }
+      }
+      # агент только что пробуждён и вотчдог увидел, что он работает (CHECK OK):
+      # вотчдог передаёт оркестратору статус и разрешение -> молния watchdog -> oc
+      if ($isOk -and (Is-Waking $node)) {
+        $script:waking.Remove($node)
+        if ($script:act.ContainsKey($node)) { $script:act[$node].Busy = $false; $script:act[$node].LastReply = $nowW }
+        Add-Snake "watchdog|oc" 1 0.0 $true
+        $script:edgeLast["watchdog|oc"] = @{ Dir = 1; Last = $nowW }
       }
     }
     if ($wdFoundTs) {
@@ -592,50 +636,175 @@ function Lerp-Color($cA, $cB, $t) {
 }
 
 # ---------- актуальность узлов ----------
+# floor: НЕ-агенты (инструменты) не гаснут ниже 0.5 (пол-яркости);
+# агенты/сервисы гаснут полностью — off ТОЛЬКО при Val<=0.005 (0%).
+function Get-Floor([string]$id) { if ($script:tools -contains $id) { return 0.5 } else { return 0.0 } }
+
+# фабрика записи актуальности/ошибок узла
+# Err — число НЕРЕШЁННЫХ ошибок (эпизоды WARN/нет-ответа, доложенные оркестратору);
+# Resolved — сколько из ни х обработано (узел вернулся в OK/ответил);
+# Fault — узел прямо сейчас в состоянии ошибки (эпизод не удваиваем, пока не закрыт).
+function New-ActEntry {
+  @{ Val = 1.0; Busy = $false; LastReply = (Get-Date); Count = 0; Err = 0; Resolved = 0; Fault = $false }
+}
+
 function Get-ActVal([string]$id, [bool]$create = $false) {
   if (-not $script:act.ContainsKey($id)) {
     if (-not $create) { return 1.0 }
-    $script:act[$id] = @{ Val = 1.0; Busy = $false; LastReply = (Get-Date) }
+    $script:act[$id] = New-ActEntry
   }
   return $script:act[$id].Val
 }
 
-# инициализация актуальности всех узлов (при старте - 100%)
+# инициализация актуальности всех узлов
 function Init-Actuality($nodes) {
   foreach ($n in $nodes) {
     if ($n.Id -in @('oc','watchdog')) { continue }
     if (-not $script:act.ContainsKey($n.Id)) {
-      $script:act[$n.Id] = @{ Val = 1.0; Busy = $false; LastReply = (Get-Date) }
+      $e = New-ActEntry
+      if ($n.Id -eq 'openrouter') {
+        # openrouter — внешний роутер: выгружен по умолчанию (серый, без памяти),
+        # поднимается только по требованию оркестратора (Bump-OrWake при llm.provider=openrouter)
+        $e.Val = 0.0
+      } elseif ($script:tools -contains $n.Id) {
+        # НЕ-агенты (инструменты): сразу «пол-яркости», вспышка только при обращении
+        $e.Val = 0.5
+      }
+      $script:act[$n.Id] = $e
     }
   }
 }
 
-# "к агенту обратились" (запрос) — актуальность x1.4, агент занят (пауза в затухании)
+# "к агенту/сервису обратились" (им воспользовались) — актуальность 20%,
+# агент занят (пауза в затухании); счётчик обращений Count++.
+# НЕ-агенты (инструменты) пол-яркости: при обращении вспышка яркости.
+# 100% даёт ТОЛЬКО вотчдог (Request-AgentWake) — простое использование НЕ разгоняет до максимума.
 function Touch-NodeAct([string]$id, [switch]$Request) {
-  if (-not $script:act.ContainsKey($id)) { $script:act[$id] = @{ Val = 1.0; Busy = $false; LastReply = (Get-Date) } }
+  if (-not $script:act.ContainsKey($id)) { $script:act[$id] = New-ActEntry }
   $a = $script:act[$id]
   if ($Request) {
-    $a.Val = [Math]::Min(1.0, $a.Val * 1.4)   # +40% от предыдущего значения
-    $a.Busy = $true                            # агент работает: затухание на паузе
+    if ($script:tools -contains $id) {
+      # не-агенты: пол-яркости, при обращении вспышка яркости (без полного максимума)
+      if ($a.Val -lt 0.5) { $a.Val = 0.5 }
+      else { $a.Val = [Math]::Min(1.0, $a.Val * 1.4) }
+    } else {
+      # агент/сервис: обращение = выдача 20% актуальности; выше 20% не снижаем
+      if ($a.Val -lt 0.2) { $a.Val = 0.2 }
+    }
+    $a.Busy = $true                                 # агент работает: затухание на паузе
     $a.LastRequest = (Get-Date)
+    $a.Count = $a.Count + 1                         # число обращений (идёт под не-агентам в число)
   } else {
-    $a.Busy = $false                           # агент ответил: с этого момента затухание
+    $a.Busy = $false                                # агент ответил: с этого момента затухание
     $a.LastReply = (Get-Date)
+    # узел был в ошибке и ответил — инцидент закрыт (решённая ошибка)
+    if ($a.Fault) { $a.Fault = $false; $a.Resolved = $a.Resolved + 1 }
   }
 }
 
-# затухание актуальности: -16%/мин (100% -> 20% за 5 минут), не ниже 20%
+# затухание актуальности: 1% за 2 секунды (0.5%/с); пол: агенты 0%, инструменты 50%
 function Update-Actuality {
   $now = Get-Date
   $dtSec = ($now - $script:actTick).TotalSeconds
   $script:actTick = $now
   if ($dtSec -le 0) { return }
-  $decay = 0.16 / 60.0 * $dtSec
+  $decay = 0.005 * $dtSec
   foreach ($k in @($script:act.Keys)) {
     $a = $script:act[$k]
     if ($a.Busy) { continue }                  # пока агент работает — значения стоят
-    $a.Val = [Math]::Max(0.20, $a.Val - $decay)
+    $floor = Get-Floor $k
+    $a.Val = [Math]::Max($floor, $a.Val - $decay)
   }
+  # запрошенный агент не ответил за 5 с -> сигнал оркестратору (прими решение) + фиксация ошибки
+  foreach ($k in @($script:act.Keys)) {
+    $a = $script:act[$k]
+    if ($a.Busy -and $a.LastRequest) {
+      $wait = ($now - $a.LastRequest).TotalSeconds
+      if ($wait -gt 5.0) {
+        $al = $script:alarm[$k]
+        if (-not $al -or (($now - $al).TotalSeconds -gt 15)) {
+          $script:alarm[$k] = $now
+          if (-not $a.Fault) { $a.Fault = $true; $a.Err = $a.Err + 1 }   # новый инцидент
+          Add-Snake "watchdog|oc" 1 0.0 $true
+          $script:edgeLast["watchdog|oc"] = @{ Dir = 1; Last = $now }
+          $script:edgeLast["watchdog|$k"] = @{ Dir = 1; Last = $now }
+        }
+      }
+    } elseif (-not $a.Busy) {
+      $script:alarm[$k] = $null                # ответил/свободен — тревога снята
+    }
+  }
+}
+
+# ---------- протокол пробуждения агента через вотчдог ----------
+# оркестратору нужен агент: oc запрашивает вотчдога -> тот включает агента (100%),
+# агент отвечает статусом -> вотчдог передаёт oc разрешение -> далее прямая работа.
+# Каскад змеек с задержками (Sleep), чтобы молния успела "долететь" до следующего шага.
+# Ребро пары oc<->watchdog (ctl): ключ "watchdog|oc", Dir=1 = от watchdog к oc,
+# Dir=-1 = от oc к watchdog (объект -> демон). ctl-ветка рисует оба направления.
+function Add-Snake([string]$e, [int]$dir, [double]$sleep = 0.0, [bool]$grant = $false) {
+  $now = Get-Date
+  if ($sleep -gt 0) { $now = $now.AddSeconds($sleep) }
+  $script:snakes += @{ E = $e; Dir = $dir; Start = $now; Sleep = $sleep; Grant = $grant }
+}
+
+# агент выключен (<=20%)/вотчдог должен его поднять: запускает каскад
+# oc->[запрос]->watchdog->[включает]->agent->[статус]->watchdog->[разрешение]->oc
+function Request-AgentWake([string]$id) {
+  $ctlKey = "watchdog|$id"
+  $ocKey  = "watchdog|oc"
+  $script:waking[$id] = @{ Since = (Get-Date) }
+  # 1) оркестратор просит вотчдога (молния oc -> watchdog)
+  Add-Snake $ocKey -1 0.0
+  $script:edgeLast[$ocKey] = @{ Dir = -1; Last = (Get-Date) }
+  # 2) вотчдог включает агента: молния watchdog -> agent
+  Add-Snake $ctlKey 1 0.6
+  # 3) агент загрузился и отвечает статусом: агент -> watchdog
+  Add-Snake $ctlKey -1 1.6
+  # 4) вотчдог передаёт разрешение оркестратору: молния watchdog -> oc
+  Add-Snake $ocKey 1 2.6
+  $script:edgeLast[$ocKey] = @{ Dir = 1; Last = (Get-Date).AddSeconds(2.6) }
+  # актуальность агента -> 100% (вотчдог дал полный запас), он работает
+  if (-not $script:act.ContainsKey($id)) { $script:act[$id] = New-ActEntry }
+  $script:act[$id].Val = 1.0
+  $script:act[$id].Busy = $true
+  $script:act[$id].LastRequest = (Get-Date)
+}
+
+# есть ли уже идущий процесс пробуждения узла (не старше 30 с)?
+function Is-Waking([string]$id) {
+  if (-not $script:waking.ContainsKey($id)) { return $false }
+  return (((Get-Date) - $script:waking[$id].Since).TotalSeconds -lt 30)
+}
+
+# обработчик "к агенту обратились": если агент выключен - включаем через вотчдог,
+# иначе - простой Touch (актуальность x1.4, busy).
+# ИСКЛЮЧЕНИЕ (MCP-серверы firecrawl/local-llm/MCP_DOCKER): их МОНИТОРИТ вотчдог,
+# но НЕ включает — в десктопном статусе они отключены/красные, поднимать должен
+# только оркестратор/десктоп; обращение к ним = просто Touch (актуальность/счётчик).
+function Bump-OrWake([string]$id) {
+  if ($id -in @('firecrawl','local-llm','MCP_DOCKER')) {
+    Touch-NodeAct $id -Request
+    return
+  }
+  if ((Get-ActVal $id) -le 0.005 -and -not (Is-Waking $id)) {
+    Request-AgentWake $id
+  } else {
+    Touch-NodeAct $id -Request
+  }
+}
+
+# УНИВЕРСАЛЬНО: актуальность по любому рабочему ребру, единообразно для oc и агентов.
+# Запрос (Dir=1) -> приёмник B начинает работать (busy+пауза, +40%; при выключ. - wake).
+# Ответ (Dir=-1) -> приёмник B ответил (снятие busy, затухание с момента ответа).
+# Ребра watchdog (<->) не считаются "работой" (мониторинг актуальность не двигает).
+function Apply-EdgeAct([string]$key, [int]$dir) {
+  $parts = $key -split '\|'
+  if ($parts.Count -lt 2) { return }
+  if ($parts[0] -eq 'watchdog' -or $parts[1] -eq 'watchdog') { return }
+  $b = $parts[1]
+  if ($b -in @('oc','watchdog')) { return }
+  if ($dir -eq 1) { Bump-OrWake $b } else { Touch-NodeAct $b }
 }
 
 # ---------- текстовый статус ----------
@@ -687,7 +856,9 @@ function Invoke-DrawGraph($g, $nodes, [bool]$pulse) {
     @('watchdog','MCP_DOCKER','ctl'), @('watchdog','ollama','ctl'), @('watchdog','browsertool','ctl'),
     @('watchdog','docker','ctl'), @('watchdog','lab','ctl'),
     # пул ИИ -> какие модели/пулы использует в каскаде
-    @('lab','ollama-prov'), @('lab','cloud')
+    @('lab','ollama-prov'), @('lab','cloud'),
+    # openrouter — внешний роутер: канал включения по требованию оркестратора
+    @('watchdog','openrouter','ctl')
   )
 
   $nodeMap = @{}; foreach ($n in $nodes) { $nodeMap[$n.Id] = $n }
@@ -713,9 +884,9 @@ function Invoke-DrawGraph($g, $nodes, [bool]$pulse) {
     $actA = Get-ActVal $e[0]; $actB = Get-ActVal $e[1]
     if ($e[0] -in @('oc','watchdog')) { $actA = 1.0 }
     if ($e[1] -in @('oc','watchdog')) { $actB = 1.0 }
-    # связь рабочая только если оба узла НЕ выключены (актуальность выше порога)
-    $aliveA = ($null -ne $nA) -and ($nA.Status -notin @('red','gray')) -and ($actA -gt 0.201)
-    $aliveB = ($null -ne $nB) -and ($nB.Status -notin @('red','gray')) -and ($actB -gt 0.201)
+    # связь рабочая только если оба узла НЕ выключены (актуальность выше 0%)
+    $aliveA = ($null -ne $nA) -and ($nA.Status -notin @('red','gray')) -and ($actA -gt 0.005)
+    $aliveB = ($null -ne $nB) -and ($nB.Status -notin @('red','gray')) -and ($actB -gt 0.005)
     $x1 = $cA.X; $y1 = $cA.Y + $cA.H/2          # низ источника
     $x2 = $cB.X; $y2 = $cB.Y - $cB.H/2          # верх приёмника
 
@@ -754,6 +925,7 @@ function Invoke-DrawGraph($g, $nodes, [bool]$pulse) {
             if ($wsn.E -ne $ctlKey) { continue }
             $wsAge = ($wNow - $wsn.Start).TotalSeconds
             if ($wsAge -gt 5.0) { continue }
+            if ($wsAge -lt 0.0) { continue }
             $wsProg = [Math]::Min(1.0, $wsAge / 1.2)
             $wsAl = 1.0 - $wsAge / 5.0
             # объект -> демон: стартуем с $x2 (объект) и несём в сторону $x1 (демон)
@@ -832,6 +1004,7 @@ function Invoke-DrawGraph($g, $nodes, [bool]$pulse) {
       if ($sn.E -ne $actKey) { continue }
       $age = ($now - $sn.Start).TotalSeconds
       if ($age -gt 5.0) { continue }              # отжившая — уже вычищена, но на всякий случай
+      if ($age -lt 0.0) { continue }              # будущая (задержка каскада) — ждём старта
       $prog = [Math]::Min(1.0, $age / 1.2)        # сама змейка пробегает ребро ~1.2 с
       $snAl = 1.0 - $age / 5.0                    # свечение события гаснет за 5 с
       # источник/приёмник по направлению события
@@ -894,18 +1067,66 @@ function Get-RoundedRectPath($x, $y, $w, $h, $r) {
     $c = $col[$n.Status]; if (-not $c) { $c = $col['gray'] }
     if ($n.Status -eq 'red' -and -not $pulse) { $c = [System.Drawing.Color]::FromArgb(120, 32, 32) }
 
-    # актуальность: "агент/сервис не используется -> тускнеет, при 20% вотчдог его отключает"
-    $isCtl = ($n.Id -in @('oc','watchdog'))   # оркестратор и демон-страж всегда "работают"
+    # актуальность: агент без использования тускнеет, off — ТОЛЬКО при 0% (Val<=0.005)
+    $isCtl  = ($n.Id -in @('oc','watchdog'))   # оркестратор и демон-страж всегда "работают"
+    $isTool = ($script:tools -contains $n.Id)   # не-агенты (инструменты оркестратора)
     $val  = if ($isCtl) { 1.0 } else { Get-ActVal $n.Id }
-    $off  = ($val -le 0.201)
-    $dim  = [Math]::Min(1.0, [Math]::Max(0.0, ($val - 0.20) / 0.80))   # 1.0 -> 0 при спаде к 20%
-    $dimC = [System.Drawing.Color]::FromArgb(30, 33, 40)               # цвет "выключенности"
+    $off  = ($val -le 0.005)
+    # не-агенты никогда не гаснут полностью — минимум «пол-яркости» (пол 0.5)
+    $dim  = [Math]::Min(1.0, [Math]::Max(0.0, $val))      # 1.0 (яркий) -> 0 (тёмный/off)
+    $dimC = [System.Drawing.Color]::FromArgb(30, 33, 40)   # цвет "выключенности"
+    $gray = [System.Drawing.Color]::FromArgb(118, 124, 134) # выключенный узел: нейтральный серый
 
     # метрики агента тем же размером, что заголовок узла, обычным шрифтом, НАД прямоугольником
     $perfTxt = if ($off) { $null } else { Get-PerfText $n.Id }
     if ($perfTxt) {
       $psz = $script:mG.MeasureString($perfTxt, $fMeta)
       $g.DrawString($perfTxt, $fMeta, $metaBrush, ($p.X + ($sz.W - $psz.Width)/2), [Math]::Max(0.0, ($p.Y - $psz.Height - 3)))
+    }
+
+    # кружок-счётчик ОШИБОК над правым верхним углом узла: "нерешённые/решённые"
+    # (решённые — зелёным через слэш). Показывается, если были инциденты.
+    if ($script:act.ContainsKey($n.Id)) {
+      $en = $script:act[$n.Id]
+      if (($en.Err -gt 0) -or ($en.Resolved -gt 0)) {
+        $bCx = $p.X + $sz.W - 14
+        $bCy = $p.Y - 4
+        $bR  = 12.0
+        $bErrCol = if ($en.Err -gt 0) { [System.Drawing.Color]::FromArgb(235, 90, 90) } else { [System.Drawing.Color]::FromArgb(120, 130, 140) }
+        $bP = Get-RoundedRectPath ($bCx - $bR) ($bCy - $bR/2) (2*$bR) ($bR + 2) 8
+        $g.FillPath([System.Drawing.SolidBrush]::new([System.Drawing.Color]::FromArgb(22, 26, 32)), $bP)
+        $g.DrawPath([System.Drawing.Pen]::new($bErrCol, 1.6), $bP)
+        $bP.Dispose()
+        $errTxt = '{0}/' -f $en.Err
+        $resTxt = '{0}' -f $en.Resolved
+        $fBadge = [System.Drawing.Font]::new('Consolas', 8.0)
+        $eSz = $script:mG.MeasureString($errTxt, $fBadge)
+        $rSz = $script:mG.MeasureString($resTxt, $fBadge)
+        $tW = $eSz.Width + $rSz.Width
+        $tX = $bCx - $tW/2; $tY = $bCy - 2
+        $g.DrawString($errTxt, $fBadge, [System.Drawing.SolidBrush]::new($bErrCol), $tX, $tY)
+        $g.DrawString($resTxt, $fBadge, [System.Drawing.SolidBrush]::new([System.Drawing.Color]::FromArgb(110, 205, 140)), ($tX + $eSz.Width), $tY)
+        $fBadge.Dispose()
+      }
+    }
+    # над ОРКЕСТРАТОРОМ — мигающий бейдж: сколько агентов сейчас в работе (переданы задания)
+    if ($n.Id -eq 'oc') {
+      $active = 0
+      foreach ($ak in @($script:act.Keys)) {
+        $aa = $script:act[$ak]
+        if ($aa.Busy -and $aa.Val -gt 0.005) { $active++ }
+      }
+      if ($active -gt 0) {
+        $bTxt = "агентов в работе: $active"
+        $fWs = [System.Drawing.Font]::new('Segoe UI Semibold', 9.0)
+        $tw = $script:mG.MeasureString($bTxt, $fWs)
+        $bx = $p.X + ($sz.W - $tw.Width)/2
+        $by = [Math]::Max(0.0, ($p.Y - 34))
+        $glow = 200 + [int](55 * [Math]::Sin($script:animT * 5.0))   # пульсация
+        $gb = [System.Drawing.SolidBrush]::new([System.Drawing.Color]::FromArgb($glow, 120, 210, 130))
+        $g.DrawString($bTxt, $fWs, $gb, $bx, $by)
+        $fWs.Dispose(); $gb.Dispose()
+      }
     }
 
     # тень (скруглённая, со смещением)
@@ -917,13 +1138,21 @@ function Get-RoundedRectPath($x, $y, $w, $h, $r) {
     # фон узла (скруглённый)
     $bgPath = Get-RoundedRectPath $p.X $p.Y $sz.W $sz.H $rr
     $g.FillPath($brushBg, $bgPath)
-    # рамка по статусу; при "выключенном" (актуальность <=20%) - гаснущая серая
+    # рамка по статусу; выключенный (0%) - нейтральный серый
     $wb = if ($n.Status -eq 'red' -and $pulse) { 3.2 } else { 2.0 }
-    $penN = [System.Drawing.Pen]::new((Lerp-Color $c $dimC (1 - $dim)), $wb)
+    $brdC = if ($off) { $gray } else { Lerp-Color $c $dimC (1 - $dim) }
+    $penN = [System.Drawing.Pen]::new($brdC, $wb)
     $g.DrawPath($penN, $bgPath)
+    # НЕ-агенты: двойной контур (вторая рамка внутри, цвета статуса)
+    if ($isTool) {
+      $inPen = [System.Drawing.Pen]::new((Lerp-Color $c $dimC (1 - $dim)), 1.2)
+      $inPath = Get-RoundedRectPath ($p.X+3.5) ($p.Y+3.5) ($sz.W-7) ($sz.H-7) 8.0
+      $g.DrawPath($inPen, $inPath)
+      $inPen.Dispose(); $inPath.Dispose()
+    }
     $penN.Dispose(); $bgPath.Dispose()
-    # маркер-точка статуса (при выключении - гаснет)
-    $mc = if ($off) { Lerp-Color $c $dimC 0.85 } else { Lerp-Color $c $dimC (1 - $dim) }
+    # маркер-точка статуса (при выключении - серый)
+    $mc = if ($off) { $gray } else { Lerp-Color $c $dimC (1 - $dim) }
     $g.FillEllipse([System.Drawing.SolidBrush]::new($mc), $p.X + 8, $p.Y + 10, 10, 10)
     # текст (рамка узла точно оборачивает надписи)
     $lines = $n.Label -split "`n"
@@ -932,25 +1161,38 @@ function Get-RoundedRectPath($x, $y, $w, $h, $r) {
     $ttx  = $p.X + 26
     $tty  = $p.Y + 8
     if ($off) {
-      # выключенный узел: серый текст + маркер состояния
-      $fgC = $dimC
+      # выключенный узел: нейтральный серый текст (вне памяти графа)
+      $fgC = $gray
+      $dC  = $gray
     }
     $g.DrawString($lines[0], $script:fTitle, [System.Drawing.SolidBrush]::new($fgC), $ttx, $tty)
     if ($lines.Count -gt 1) { $g.DrawString($lines[1], $script:fSub, [System.Drawing.SolidBrush]::new($dC), $ttx, $tty + [Math]::Ceiling($script:fTitle.Height)) }
     if ($lines.Count -gt 2) { $g.DrawString($lines[2], $script:fSub, [System.Drawing.SolidBrush]::new($dC), $ttx, $tty + 2*[Math]::Ceiling($script:fTitle.Height)) }
-    # uptime (внизу рамки, по центру ширины); у выключенного - отметка "off"
+    # статус on/off ПЕРЕД прямоугольником (слева от узла)
+    $stCol = if ($off) { $gray } else { [System.Drawing.Color]::FromArgb(120, 200, 150) }
+    $stBrush = [System.Drawing.SolidBrush]::new($stCol)
+    $stTxt = if ($off) { 'off' } else { 'on' }
+    $stSz = $script:mG.MeasureString($stTxt, $script:fUp)
+    $g.DrawString($stTxt, $script:fUp, $stBrush, ($p.X - $stSz.Width - 4), ($p.Y + $sz.H/2 - $stSz.Height/2))
+    $stBrush.Dispose()
+    # ПОД прямоугольником: агенты/сервисы — актуальность (%), НЕ-агенты — число обращений
+    if ($isTool) {
+      $cnt = if ($script:act.ContainsKey($n.Id)) { $script:act[$n.Id].Count } else { 0 }
+      $actTxt = '{0}' -f $cnt
+      $actCol = [System.Drawing.Color]::FromArgb(205, 175, 110)   # янтарный: число обращений
+    } else {
+      $actTxt = if ($isCtl) { '100%' } else { '{0}%' -f [int]($val * 100) }
+      $actCol = if ($off) { $gray } else { $dC }
+    }
+    $actSz  = $script:mG.MeasureString($actTxt, $script:fUp)
+    $g.DrawString($actTxt, $script:fUp, [System.Drawing.SolidBrush]::new($actCol), ($p.X + ($sz.W - $actSz.Width)/2), ($p.Y + $sz.H + 6))
+    # uptime (внизу рамки, по центру ширины)
     if ($n.Uptime -and $n.Uptime -ne '—' -and -not $off) {
       $upBrush = [System.Drawing.SolidBrush]::new([System.Drawing.Color]::FromArgb(120, 200, 150))
       $upTxt = 'up ' + $n.Uptime
       $upSz  = $script:mG.MeasureString($upTxt, $script:fUp)
       $g.DrawString($upTxt, $script:fUp, $upBrush, ($p.X + ($sz.W - $upSz.Width)/2), ($p.Y + $sz.H - 18))
       $upBrush.Dispose()
-    } elseif ($off) {
-      $offBrush = [System.Drawing.SolidBrush]::new([System.Drawing.Color]::FromArgb(86, 92, 102))
-      $offTxt = 'off'
-      $offSz  = $script:mG.MeasureString($offTxt, $script:fUp)
-      $g.DrawString($offTxt, $script:fUp, $offBrush, ($p.X + ($sz.W - $offSz.Width)/2), ($p.Y + $sz.H - 18))
-      $offBrush.Dispose()
     }
   }
   $brushFg.Dispose(); $brushDim.Dispose(); $brushBg.Dispose(); $fMeta.Dispose(); $metaBrush.Dispose()
@@ -985,9 +1227,72 @@ $ErrLog = Join-Path $PSScriptRoot 'infra-graph.err.log'
   param($s, $e)
   try { "[$([DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))] $($e.Exception)" | Add-Content -LiteralPath $ErrLog -Encoding utf8 } catch {}
 })
+
+# ---------- один граф — одно окно: освобождаем консоль pwsh ----------
+# Канонический запуск (`Start-Process pwsh -STA ... [Console]::Title='infra-graph'`)
+# порождает ОТДЕЛЬНУЮ консоль (окно pwsh + conhost) — это и есть «первое окно».
+# Не прячем её (скрытое окно всё равно висит в памяти), а ПОЛНОСТЬЮ
+# отсоединяемся от консоли (FreeConsole): окно и буфер консоли закрываются,
+# остаётся только процесс карты. Терминал пользователя (UserInteractive, свой
+# заголовок) не трогаем — там консоль нужна.
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class InfraGraphWin {
+  [DllImport("kernel32.dll", SetLastError = true)] public static extern IntPtr FreeConsole();
+  [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow();
+}
+'@
+$script:consoleFreed = $false
+if (-not $Status -and -not $Shot -and -not $KeepConsole) {
+  try {
+    $ownConsole = ($null -ne [Console]::Title -and [Console]::Title -eq 'infra-graph')
+    if (-not $ownConsole) { $ownConsole = (-not [Environment]::UserInteractive) }
+    if ($ownConsole) {
+      $hwnd = [InfraGraphWin]::GetConsoleWindow()
+      if ($hwnd -ne [IntPtr]::Zero) {
+        [InfraGraphWin]::FreeConsole() | Out-Null
+        $script:consoleFreed = $true
+      }
+    }
+  } catch {}
+}
 $st = Get-NodeStatus
 Init-Actuality $st.Nodes
 $script:st = $st
+
+# ---------- один граф — одно окно ----------
+# При старте GUI закрываем любой работающий экземпляр карты (старое окно могло
+# остаться в трее из-за Hide на закрытие), и ТОЛЬКО потом открываем новый.
+# Это исключает «пустые»/двойные окна при повторных запусках.
+function Stop-OtherGraphWindows {
+  foreach ($pr in @(Get-Process pwsh, powershell -ErrorAction SilentlyContinue)) {
+    if ($pr.Id -eq $PID) { continue }
+    $isGraph = $false
+    # ищем по командной строке — старый экземпляр может быть СПРЯТАН в трее
+    # (после Hide у процесса нет MainWindowHandle, найти его можно только по cmdline)
+    try {
+      $cm = (Get-CimInstance Win32_Process -Filter "ProcessId=$($pr.Id)" -ErrorAction SilentlyContinue).CommandLine
+      if ($cm -and $cm -match 'infra-graph\.ps1') { $isGraph = $true }
+    } catch {}
+    if (-not $isGraph) {
+      try { if ($pr.MainWindowTitle -like 'Карта инфраструктуры*') { $isGraph = $true } } catch {}
+    }
+    if (-not $isGraph) { continue }
+    try {
+      "закрываю старый экземпляр графа (pid $($pr.Id))" | Add-Content -LiteralPath $ErrLog -Encoding utf8
+      $null = $pr.CloseMainWindow()                     # мягко (но обработчик прячет в трей)
+      if (-not $pr.WaitForExit(2500)) {                 # если остался жив — принудительно
+        Stop-Process -Id $pr.Id -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Milliseconds 400
+      }
+    } catch {}
+  }
+}
+# GUI-режим (без -Status и -Shot): один граф — одно окно
+if (-not $Status -and -not $Shot) {
+  Stop-OtherGraphWindows
+}
 
 $form = New-Object System.Windows.Forms.Form
 $form.Text = 'Карта инфраструктуры | оркестратор'
