@@ -1,0 +1,13 @@
+{
+  "name": "browsertool",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "HTTP-драйвер локального headless-браузера (patchright + системный Edge) для пула Lab100 и UI-автоверификации. Слушает 127.0.0.1:8123.",
+  "scripts": {
+    "start": "node driver.mjs"
+  },
+  "dependencies": {
+    "patchright": "^1.63.0"
+  }
+}

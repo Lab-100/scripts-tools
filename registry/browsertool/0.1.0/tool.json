@@ -1,0 +1,38 @@
+{
+  "schema": "invr.tool/1",
+  "name": "browsertool",
+  "version": "0.1.0",
+  "description": "Headless-браузерный драйвер (patchright + системный Edge/Chrome), слушает 127.0.0.1:8123. Команды open/nav/snap/click/fill/press/type/eval/shot/get. Поднимается по требованию (mcp-watchdog state\\browsertool.json desired=up)",
+  "entry": "driver.mjs",
+  "type": "service",
+  "requires": {
+    "node": ">=20"
+  },
+  "dependencies": [],
+  "runtime": {
+    "port": 8123,
+    "node": "C:\\Program Files\\nodejs\\node.exe",
+    "launch": "Start-Process 'C:\\Program Files\\nodejs\\node.exe' -ArgumentList driver.mjs -WorkingDirectory <каталог установки>"
+  },
+  "interfaces": {
+    "http": {
+      "endpoint": "http://127.0.0.1:8123",
+      "commands": [
+        "open",
+        "nav",
+        "snap",
+        "click",
+        "fill",
+        "press",
+        "type",
+        "eval",
+        "shot",
+        "get"
+      ]
+    }
+  },
+  "compat": {
+    "breaks": []
+  },
+  "published": "2026-09-26"
+}

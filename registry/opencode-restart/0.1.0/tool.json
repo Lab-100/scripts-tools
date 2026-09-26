@@ -1,0 +1,14 @@
+{
+  "schema": "invr.tool/1",
+  "name": "opencode-restart",
+  "version": "0.1.0",
+  "entry": "opencode-restart.ps1",
+  "description": "Перезапуск opencode Desktop: закрывает и запускает приложение, поднимает демон mcp-watchdog, ждёт готовности всех MCP-серверов (нужно после правки opencode.json/plugin)",
+  "author": "Lab-100",
+  "created": "2026-09-26",
+  "keywords": ["opencode", "mcp", "watchdog", "restart", "перезапуск"],
+  "requires": {
+    "pwsh": "7.0+"
+  },
+  "notes": "Запускать из отдельного окна (текущая сессия opencode оборвётся). cmd-шим для двойного клика: opencode-restart.cmd"
+}

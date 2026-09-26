@@ -5,11 +5,24 @@ __pycache__/
 *.pyc
 node_modules/
 .cache/
-gh/
-browsertool/
-mcp-watchdog/
-state/
 *.positions.json
 
 # runtime-логи версий инструментов
 *.err.log
+*.log
+*.pid
+
+# Рабочие каталоги инструментов в корне репозитория.
+# Ведущий слэш обязателен: без него паттерн съедает одноимённые
+# каталоги версий в registry/ (registry/browsertool, registry/mcp-watchdog),
+# и инструменты из project.json не попадают в публикуемый репозиторий.
+/gh/
+/browsertool/
+/mcp-watchdog/
+/state/
+
+# Локальные пользовательские настройки (приватные): создаются рядом,
+# в публичный репозиторий не попадают. Значения по умолчанию — в коде.
+/config.local.json
+/private.local.json
+*.local.json

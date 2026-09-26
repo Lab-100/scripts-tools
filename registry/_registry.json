@@ -34,7 +34,7 @@
     },
     {
       "name": "infra-graph",
-      "latest": "0.4.0"
+      "latest": "0.6.0"
     },
     {
       "name": "llm-mcp",
@@ -50,7 +50,11 @@
     },
     {
       "name": "opencode-plugins",
-      "latest": "0.4.0"
+      "latest": "0.5.0"
+    },
+    {
+      "name": "opencode-restart",
+      "latest": "0.1.0"
     },
     {
       "name": "opencode-status",

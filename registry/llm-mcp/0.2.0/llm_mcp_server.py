@@ -33,7 +33,10 @@ MODEL_ALLOW = {
     "hermes3:3b-l12",
     "hermes3:3b-l16",
 }
-HERMES_EXE = os.environ.get("HERMES_EXE", r"C:\Users\<user>\.local\bin\hermes.exe")
+# Пути локальной установки Hermes. Дефолты переносимы, переопределяются env.
+HERMES_EXE = os.environ.get(
+    "HERMES_EXE", os.path.join(os.path.expanduser("~"), ".local", "bin", "hermes.exe")
+)
 PROJECT_DIR = os.environ.get("HERMES_PROJECT_DIR", r"C:\Scripts\hermes-project")
 
 
