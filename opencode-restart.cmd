@@ -1,8 +1,7 @@
 @echo off
-REM Перезапуск opencode Desktop + подъём mcp-watchdog и MCP-серверов.
-REM Текущая сессия opencode при этом оборвётся. Сгенерировано вручную (инсталлер opencode-plugins делает только шимы мониторов).
-setlocal
-pwsh -NoProfile -NoLogo -File "%~dp0opencode-restart.ps1" %*
-echo.
-echo Завершено. Если окно закрылось сразу - запусти opencode из меню Пуск.
-pause
+rem Перезапуск opencode (двойной клик из Explorer): поднимает демон-страж
+rem и ждёт готовности MCP. Запускать из ОТДЕЛЬНОГО окна: текущая сессия
+rem opencode при перезапуске обрывается.
+set "TOOLS=%~dp0"
+cd /d "%TOOLS%"
+start "" pwsh -NoProfile -NoLogo -Command "& (Join-Path $env:TOOLS 'opencode-restart.ps1')"
