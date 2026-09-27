@@ -9,12 +9,12 @@ try { [Console]::InputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 try { $OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $ErrorActionPreference = 'Stop'
 
-# Состояние авторизации: -AuthDir > env FIRECRAWL_AUTH_DIR > USERPROFILE\.devstation > C:\Scripts\tools
+# Состояние авторизации: -AuthDir > env FIRECRAWL_AUTH_DIR > USERPROFILE\.devstation > <корень инструментов>
 if (-not $AuthDir) {
     try { $envDir = [Environment]::GetEnvironmentVariable('FIRECRAWL_AUTH_DIR'); if ($envDir) { $AuthDir = $envDir } } catch {}
 }
 if (-not $AuthDir -and (Test-Path "$env:USERPROFILE\.devstation")) { $AuthDir = "$env:USERPROFILE\.devstation\.firecrawl-auth" }
-if (-not $AuthDir) { $AuthDir = 'C:\Scripts\tools\.firecrawl-auth' }
+if (-not $AuthDir) { $AuthDir = Join-Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) '.firecrawl-auth' }
 $stateDir = $AuthDir
 New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
 $stateFile = Join-Path $stateDir 'session.json'

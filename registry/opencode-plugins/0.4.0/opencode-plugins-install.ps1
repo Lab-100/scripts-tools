@@ -13,14 +13,27 @@
   #>
 [CmdletBinding()]
 param(
-  [string]$ToolsDir   = 'C:\Scripts\tools',
-  [string]$PluginsDir = 'C:\Scripts\.opencode\plugins',
+  [string]$ToolsDir   = '',
+  [string]$PluginsDir = '',
   [switch]$DryRun,
   [switch]$CheckOnly,
   [switch]$Force
 )
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+# Переносимые корни (машинные пути не зашиты): каталог инструментов и рабочее
+# пространство — уровнем выше реестра; каталог плагинов opencode — .opencode
+# рабочего пространства, иначе профиля пользователя.
+$regRoot   = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+$toolsRoot = if ($ToolsDir) { $ToolsDir } else { Split-Path $regRoot -Parent }
+$wsRoot    = Split-Path $toolsRoot -Parent
+if (-not $PluginsDir) {
+  $PluginsDir = foreach ($c in @((Join-Path $wsRoot '.opencode\plugins'), (Join-Path $env:USERPROFILE '.opencode\plugins'))) {
+    if (Test-Path -LiteralPath $c) { $c; break }
+  }
+  if (-not $PluginsDir) { $PluginsDir = Join-Path $wsRoot '.opencode\plugins' }
+}
 
 $srcRoot  = $PSScriptRoot
 $srcPlugs = Join-Path $srcRoot 'plugins'

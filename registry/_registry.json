@@ -66,12 +66,12 @@
     },
     {
       "name": "resolve-tools",
-      "latest": "0.5.0"
+      "latest": "0.6.0"
     },
     {
       "name": "vmdisk",
       "latest": "0.2.0"
     }
   ],
-  "lastUpdated": "2026-09-26"
+  "lastUpdated": "2026-09-27"
 }

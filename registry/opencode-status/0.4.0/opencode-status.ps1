@@ -32,7 +32,9 @@ try {
 $ErrorActionPreference  = 'SilentlyContinue'
 
 $LogPath = Join-Path $env:USERPROFILE '.local\share\opencode\log\opencode.log'
-$WdPath  = 'C:\Scripts\tools\mcp-watchdog\state\current.json'
+# Каталог инструментов (уровнем выше registry\): состояние демона рядом с шимами
+$toolsRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
+$WdPath  = Join-Path $toolsRoot 'mcp-watchdog\state\current.json'
 
 # ---------- сбор статусов ----------
 function Get-Status {

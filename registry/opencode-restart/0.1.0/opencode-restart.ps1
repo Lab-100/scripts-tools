@@ -36,9 +36,14 @@ try {
 } catch { }
 # ------------------------------------------------------------------------
 
-$watchdogState = 'C:\Scripts\tools\mcp-watchdog\state'
+# Переносимые корни (машинные пути не зашиты): скрипт лежит в
+# registry\<tool>\<version>, каталог инструментов — уровнем выше реестра.
+$regRoot   = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+$toolsRoot = Split-Path $regRoot -Parent
+$watchdogRuntimeDir = Join-Path $toolsRoot 'mcp-watchdog'
+$watchdogState = Join-Path $watchdogRuntimeDir 'state'
 $watchdogPidFile = Join-Path $watchdogState 'watchdog.pid'
-$watchdogShim = 'C:\Scripts\tools\mcp-watchdog.ps1'
+$watchdogShim = Join-Path $toolsRoot 'mcp-watchdog.ps1'
 $currentJson = Join-Path $watchdogState 'current.json'
 
 function Get-OpencodeMain {
@@ -103,7 +108,7 @@ if (-not $NoLaunch) {
 Start-Sleep -Seconds 3
 if (Get-WatchdogAlive) { Add-Log "  mcp-watchdog: уже живой" }
 elseif (Test-Path $watchdogShim) {
-    Start-Process pwsh -ArgumentList '-NoProfile', '-File', $watchdogShim, '-RuntimeDir', 'C:\Scripts\tools\mcp-watchdog' -WindowStyle Hidden | Out-Null
+    Start-Process pwsh -ArgumentList '-NoProfile', '-File', $watchdogShim, '-RuntimeDir', $watchdogRuntimeDir -WindowStyle Hidden | Out-Null
     Add-Log "  mcp-watchdog: запущен"
 } else { Add-Log "  [внимание] нет шима $watchdogShim" }
 

@@ -55,5 +55,6 @@ Write-Host '--- docker agent doctor ---'
 docker agent doctor (Join-Path $dir 'gordon.yaml') 2>&1 | Select-Object -Last 20
 
 Write-Host '=== Готово. Использование: ===' -ForegroundColor Green
-Write-Host '  ротатор:   pwsh C:\Scripts\tools\gordon.ps1 -Prompt "задача"'
+$gordonShim = Join-Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) 'gordon.ps1'
+Write-Host "  ротатор:   pwsh $gordonShim -Prompt `"задача`""
 Write-Host '  напрямую:  docker agent run $HOME\.agents\gordon.yaml --exec "задача"'

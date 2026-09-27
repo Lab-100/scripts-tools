@@ -20,7 +20,9 @@ Add-Type -AssemblyName System.Drawing
 
 $off = [System.Text.Encoding]::UTF8
 $LogPath = Join-Path $env:USERPROFILE '.local\share\opencode\log\opencode.log'
-$WdPath  = 'C:\Scripts\tools\mcp-watchdog\state\current.json'
+$regRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+$toolsRoot = Split-Path $regRoot -Parent
+$WdPath  = Join-Path $toolsRoot 'mcp-watchdog\state\current.json'
 
 # ---------- сбор статусов ----------
 function Get-NodeStatus {

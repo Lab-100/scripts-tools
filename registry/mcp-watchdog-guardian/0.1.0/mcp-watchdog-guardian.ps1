@@ -48,7 +48,7 @@
   Каталог состояния хранителя (по умолчанию каталог скрипта).
 
 .PARAMETER WatchdogRuntimeDir
-  Каталог состояния демона mcp-watchdog (по умолчанию C:\Scripts\tools\mcp-watchdog).
+  Каталог состояния демона mcp-watchdog (по умолчанию <корень инструментов>\mcp-watchdog).
 
 .EXAMPLE
   pwsh -File mcp-watchdog-guardian.ps1 -Once
@@ -67,7 +67,7 @@ param(
     [int]$WaitMaxMin = 0,
     [switch]$Once,
     [string]$RuntimeDir = '',
-    [string]$WatchdogRuntimeDir = 'C:\Scripts\tools\mcp-watchdog',
+    [string]$WatchdogRuntimeDir = '',
     [string]$LogFile = ''
 )
 
@@ -75,9 +75,20 @@ $ErrorActionPreference = 'Continue'
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 try { $OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 
+# Переносимые корни (машинные пути не зашиты): скрипт лежит в
+# registry\<tool>\<version>, каталог инструментов — уровнем выше реестра.
+$regRoot   = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+$toolsRoot = Split-Path $regRoot -Parent
+if (-not $WatchdogRuntimeDir) { $WatchdogRuntimeDir = Join-Path $toolsRoot 'mcp-watchdog' }
+
 $BaseDir  = if ($RuntimeDir) { $RuntimeDir } else { $PSScriptRoot }
 $StateDir = Join-Path $BaseDir 'state'
-if (-not $LogFile) { $LogFile = Join-Path 'C:\Scripts\Logs' 'mcp-watchdog-guardian.log' }
+# Журнал: env INVR_LOG_DIR (процесс, затем User) > <корень инструментов>\Logs
+$logDirEnv = if ($env:INVR_LOG_DIR) { $env:INVR_LOG_DIR } else { [Environment]::GetEnvironmentVariable('INVR_LOG_DIR', 'User') }
+if (-not $LogFile) {
+    $logDir = if ($logDirEnv) { $logDirEnv } else { Join-Path $toolsRoot 'Logs' }
+    $LogFile = Join-Path $logDir 'mcp-watchdog-guardian.log'
+}
 $LogDir = Split-Path $LogFile -Parent
 foreach ($d in @($StateDir, $LogDir)) { if ($d -and -not (Test-Path -LiteralPath $d)) { New-Item -ItemType Directory -Force -Path $d | Out-Null } }
 
@@ -85,8 +96,8 @@ $GuardianPidFile = Join-Path $StateDir 'guardian.pid'
 $WdStateDir      = Join-Path $WatchdogRuntimeDir 'state'
 $WdPidFile       = Join-Path $WdStateDir 'watchdog.pid'
 $WdCurFile       = Join-Path $WdStateDir 'current.json'
-$WdShim          = 'C:\Scripts\tools\mcp-watchdog.ps1'
-$WdRegistryRoot  = 'C:\Scripts\tools\registry\mcp-watchdog'
+$WdShim          = Join-Path $toolsRoot 'mcp-watchdog.ps1'
+$WdRegistryRoot  = Join-Path $regRoot 'mcp-watchdog'
 
 function Write-Log {
     param([string]$Level, [string]$Msg)

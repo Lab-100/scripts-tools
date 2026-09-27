@@ -9,14 +9,15 @@
   Запуск:  pwsh -NoProfile -File .\opencode-plugins-install.ps1 [-PluginsDir <путь>] [-ShimsDir <путь>] [-DryRun] [-CheckOnly] [-Force]
 
   Параметры:
-    -PluginsDir  каталог плагинов opencode (по умолчанию C:\Scripts\.opencode\plugins)
+    -PluginsDir  каталог плагинов opencode (по умолчанию <рабочее пространство>\.opencode\plugins,
+                иначе %USERPROFILE%\.opencode\plugins)
     -ShimsDir    каталог для cmd-шимов (по умолчанию корень реестра: <tools>)
     -CheckOnly   только проверка среды, ничего не пишет
     -DryRun      печатает, что будет сделано
   #>
 [CmdletBinding()]
 param(
-  [string]$PluginsDir = 'C:\Scripts\.opencode\plugins',
+  [string]$PluginsDir = '',
   [string]$ShimsDir   = '',
   [switch]$DryRun,
   [switch]$CheckOnly,
@@ -24,6 +25,17 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
+
+# Каталог плагинов opencode: .opencode рабочего пространства, иначе профиля
+# пользователя (машинный путь не зашит).
+if (-not $PluginsDir) {
+  $regRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+  $wsRoot  = Split-Path (Split-Path $regRoot -Parent) -Parent
+  $PluginsDir = foreach ($c in @((Join-Path $wsRoot '.opencode\plugins'), (Join-Path $env:USERPROFILE '.opencode\plugins'))) {
+    if (Test-Path -LiteralPath $c) { $c; break }
+  }
+  if (-not $PluginsDir) { $PluginsDir = Join-Path $wsRoot '.opencode\plugins' }
+}
 
 $srcPlugs = Join-Path $PSScriptRoot 'plugins'
 if (-not $ShimsDir) {

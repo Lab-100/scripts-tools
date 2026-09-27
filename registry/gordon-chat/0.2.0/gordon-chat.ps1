@@ -16,7 +16,9 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
 
 $pipeName = "\\.\pipe\$Pipe"
-$stateFile = 'C:\Scripts\tools\state\gordon-chat.json'
+# Состояние сессии: каталог инструментов (уровнем выше registry\) -> state\
+$toolsRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
+$stateFile = Join-Path $toolsRoot 'state\gordon-chat.json'
 $agentPath = $null
 
 function Get-PipeAgent {

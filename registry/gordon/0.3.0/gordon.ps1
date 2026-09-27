@@ -11,9 +11,12 @@ try { [Console]::InputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 try { $OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $ErrorActionPreference = 'Continue'
 
+# Каталог инструментов (каталог с шимами): уровнем выше registry\
+$toolsRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
+
 # Ротация облачных провайдеров (кредиты бесплатных объёмов) + фолбэк на локальный Model Runner.
 # Порядок конфига: -ProvidersJson > env GORDON_PROVIDERS_JSON > рядом со скриптом >
-# USERPROFILE\.devstation > legacy C:\Scripts\tools.
+# USERPROFILE\.devstation > каталог инструментов.
 $seed = @(
     @{ name = 'groq';        env = 'GROQ_API_KEY';         model = 'groq/llama-3.3-70b-versatile';  url = 'https://console.groq.com' },
     @{ name = 'google';      env = 'GEMINI_API_KEY';       model = 'google/gemini-2.5-flash';       url = 'https://aistudio.google.com/apikey' },
@@ -34,7 +37,7 @@ function Resolve-ProvidersJson {
     if (Test-Path $side) { return $side }
     $home = Join-Path $env:USERPROFILE '.devstation\gordon-providers.json'
     if (Test-Path $home) { return $home }
-    $legacy = 'C:\Scripts\tools\gordon-providers.json'
+    $legacy = Join-Path $toolsRoot 'gordon-providers.json'
     if (Test-Path $legacy) { return $legacy }
     return ''
 }
@@ -43,9 +46,7 @@ if (-not $cfg) { $cfg = Join-Path $env:USERPROFILE '.devstation\gordon-providers
 if (Test-Path $cfg) { $providers = Get-Content $cfg -Raw | ConvertFrom-Json } else { $providers = $seed; New-Item -ItemType Directory -Force -Path (Split-Path $cfg -Parent) | Out-Null; $providers | ConvertTo-Json -Depth 4 | Set-Content $cfg -Encoding utf8; Write-Host "Создан список провайдеров: $cfg" }
 
 # Шим gordon-chat (динамический latest) для канала Gordon Desktop через npipe docker-agent.
-$repoTools = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
-$gordonChatShim = Join-Path $repoTools 'gordon-chat.ps1'
-if (-not (Test-Path $gordonChatShim)) { $gordonChatShim = 'C:\Scripts\tools\gordon-chat.ps1' }
+$gordonChatShim = Join-Path $toolsRoot 'gordon-chat.ps1'
 
 $who = ''
 foreach ($pr in $providers) {

@@ -30,17 +30,24 @@ param(
 
 $ErrorActionPreference = 'Continue'
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
+# Переносимые корни (машинные пути не зашиты): скрипт лежит в
+# registry\<tool>\<version>, каталог инструментов — уровнем выше реестра,
+# рабочее пространство — уровнем выше каталога инструментов.
+$regRoot   = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+$toolsRoot = Split-Path $regRoot -Parent
+$wsRoot    = Split-Path $toolsRoot -Parent
 $BaseDir   = if ($RuntimeDir) { $RuntimeDir } else { $PSScriptRoot }
 $StateDir  = Join-Path $BaseDir 'state'
 $ReqDir    = Join-Path $BaseDir 'requests'
-$LogDir    = 'C:\Scripts\Logs'
+# Журналы: env INVR_LOG_DIR (процесс, затем User) > <корень инструментов>\Logs
+$logDirEnv = if ($env:INVR_LOG_DIR) { $env:INVR_LOG_DIR } else { [Environment]::GetEnvironmentVariable('INVR_LOG_DIR', 'User') }
+$LogDir    = if ($logDirEnv) { $logDirEnv } else { Join-Path $toolsRoot 'Logs' }
 $LogFile   = Join-Path $LogDir 'mcp-watchdog.log'
 
 $DockerExe       = 'C:\Program Files\Docker\Docker\Docker Desktop.exe'
-$OllamaServerCmd = 'C:\Scripts\ollama-server.cmd'
+$OllamaServerCmd = Join-Path $wsRoot 'ollama-server.cmd'
 $BrowserPort     = 8123
 $NodeExe         = 'C:\Program Files\nodejs\node.exe'
-$toolsRoot    = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
 $driverLocal  = Join-Path $BaseDir 'browsertool\driver.mjs'
 $driverShared = Join-Path $toolsRoot 'browsertool\driver.mjs'
 $BrowserDriver   = if ($BrowserDriverPath) { $BrowserDriverPath }
@@ -122,18 +129,27 @@ function Test-Browsertool {
     return @($listen, $detail)
 }
 
+function Get-OpencodeDir {
+    # каталог конфигурации opencode: рабочее пространство, иначе профиль
+    foreach ($c in @((Join-Path $wsRoot '.opencode'), (Join-Path $env:USERPROFILE '.opencode'))) {
+        if (Test-Path -LiteralPath $c) { return $c }
+    }
+    return (Join-Path $wsRoot '.opencode')
+}
+
 function Test-InvrStack {
+    $ocDir = Get-OpencodeDir
     $files = @(
-        'C:\Scripts\.opencode\agent\invr-lead.md',
-        'C:\Scripts\.opencode\agent\invr-analyst.md',
-        'C:\Scripts\.opencode\agent\invr-architect.md',
-        'C:\Scripts\.opencode\agent\invr-coder.md',
-        'C:\Scripts\.opencode\agent\invr-reviewer.md',
-        'C:\Scripts\.opencode\agent\invr-qa.md',
-        'C:\Scripts\.opencode\agent\invr-devops.md',
-        'C:\Scripts\.opencode\agent\invr-docs.md',
-        'C:\Scripts\.opencode\command\invr.md',
-        'C:\Scripts\.opencode\command\providers.md'
+        (Join-Path $ocDir 'agent\invr-lead.md'),
+        (Join-Path $ocDir 'agent\invr-analyst.md'),
+        (Join-Path $ocDir 'agent\invr-architect.md'),
+        (Join-Path $ocDir 'agent\invr-coder.md'),
+        (Join-Path $ocDir 'agent\invr-reviewer.md'),
+        (Join-Path $ocDir 'agent\invr-qa.md'),
+        (Join-Path $ocDir 'agent\invr-devops.md'),
+        (Join-Path $ocDir 'agent\invr-docs.md'),
+        (Join-Path $ocDir 'command\invr.md'),
+        (Join-Path $ocDir 'command\providers.md')
     )
     $missing = @($files | Where-Object { -not (Test-Path $_) })
     $detail = "агенты/команды INVR: есть $($files.Count - $missing.Count) из $($files.Count); отсутствуют: $(if ($missing) { $missing -join '; ' } else { 'нет' })"

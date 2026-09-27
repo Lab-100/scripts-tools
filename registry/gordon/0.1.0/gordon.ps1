@@ -6,7 +6,7 @@ param(
 $ErrorActionPreference = 'Continue'
 
 # Ротация облачных провайдеров (кредиты бесплатных объёмов) + фолбэк на локальный Model Runner.
-# Порядок берётся из C:\Scripts\tools\gordon-providers.json. Добавляется использование, когда появится ключ.
+# Порядок берётся из gordon-providers.json рядом с шимами. Добавляется использование, когда появится ключ.
 $seed = @(
     @{ name = 'groq';        env = 'GROQ_API_KEY';        model = 'groq/llama-3.3-70b-versatile';  url = 'https://console.groq.com' },
     @{ name = 'google';      env = 'GOOGLE_API_KEY';      model = 'google/gemini-2.5-flash';       url = 'https://aistudio.google.com/apikey' },
@@ -17,7 +17,9 @@ $seed = @(
     @{ name = 'openrouter';  env = 'OPENROUTER_API_KEY';  model = 'openrouter/' ;                   url = 'https://openrouter.ai/settings/keys' }
 )
 
-$cfg = 'C:\Scripts\tools\gordon-providers.json'
+# Каталог конфигурации рядом с шимами: уровнем выше registry\
+$toolsRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
+$cfg = Join-Path $toolsRoot 'gordon-providers.json'
 if (Test-Path $cfg) { $providers = Get-Content $cfg -Raw | ConvertFrom-Json } else { $providers = $seed; $providers | ConvertTo-Json -Depth 4 | Set-Content $cfg -Encoding utf8; Write-Host "Создан список провайдеров: $cfg" }
 
 $who = ''

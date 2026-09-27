@@ -23,8 +23,24 @@ try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 try { [Console]::InputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 try { $OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $ErrorActionPreference = 'Stop'
-# Каталог бэкапов НЕ на системном диске (политика: E:\), версионируется в GitHub.
-$root = 'E:\rollback-catalog'
+# Каталог бэкапов НЕ на системном диске (политика), версионируется в GitHub.
+# Дефолт: первый несистемный диск (не C:) с готовым фиксированным томом.
+# Get-PSDrive отдаёт и неготовые приводы (CD/DVD), поэтому тип и готовность тома
+# проверяются через DriveInfo; если несистемных дисков нет — каталог в профиле.
+function Get-DefaultRoot {
+    param([string]$Leaf)
+    foreach ($d in (Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue |
+                    Where-Object { $_.Name -ne 'C' -and $_.Root } | Sort-Object Name)) {
+        try {
+            $di = [System.IO.DriveInfo]::new($d.Root)
+            if ($di.IsReady -and $di.DriveType -eq [System.IO.DriveType]::Fixed) { return (Join-Path $d.Root $Leaf) }
+        } catch { }
+    }
+    return (Join-Path $env:USERPROFILE $Leaf)
+}
+$envRoot = [Environment]::GetEnvironmentVariable('INVR_ROLLBACK_ROOT')
+$root = if ($envRoot) { [IO.Path]::GetFullPath($envRoot) } else { Get-DefaultRoot 'rollback-catalog' }
+$entryHint = if ($PSCommandPath) { $PSCommandPath } else { 'backup-util.ps1' }
 $changesDir = Join-Path $root 'changes'
 $manifestPath = Join-Path $root 'manifest.json'
 $readmePath = Join-Path $root 'README.md'
@@ -111,7 +127,7 @@ switch ($Action) {
             $readme = @(
                 '# Каталог отката изменений (rollback-catalog)',
                 '',
-                'Хранится вне системного диска (E:\), версионируется приватным GitHub-репо.',
+                "Хранится вне системного диска ($root), версионируется приватным GitHub-репо.",
                 '',
                 '## Структура',
                 '- `manifest.json` — журнал изменений (ChangeId, время, файлы, описание).',
@@ -124,7 +140,7 @@ switch ($Action) {
                 '- Создание новых файлов и дополнение desc.md — разрешено без спроса.',
                 '- Редактирование/удаление/откат существующих изменений — только после',
                 '  пошагового подтверждения пользователя.',
-                '- Откат: `pwsh C:\Scripts\tools\backup-util.ps1 undo -ChangeId <id>`'
+                "- Откат: ``pwsh $entryHint undo -ChangeId <id>``"
             )
             Set-Content -Path $readmePath -Value ($readme -join "`n") -Encoding utf8
         }
@@ -179,7 +195,7 @@ switch ($Action) {
             "- **Бэкап оригинала:** $orig",
             "- **Скрипт отката:** $restore",
             '',
-            '> Правила каталога `E:\rollback-catalog`: создание новых файлов и дополнение',
+            "> Правила каталога ``$root``: создание новых файлов и дополнение",
             '> этого desc.md — разрешены. Редактирование/удаление/откат существующих изменений',
             '> — только после подтверждения пользователем.'
         )

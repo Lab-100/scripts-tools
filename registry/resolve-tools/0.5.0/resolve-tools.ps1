@@ -18,8 +18,8 @@
   Каталог junction-ов переопределяется манифестом: "links": { "dir": "tools-links" }.
 
 
-  pwsh resolve-tools.ps1 link -Project C:\Scripts\Lab100
-  pwsh resolve-tools.ps1 status -Project C:\Scripts\devstation-deploy
+  pwsh resolve-tools.ps1 link   -Project <путь-к-проекту>
+  pwsh resolve-tools.ps1 status -Project <путь-к-проекту>
 #>
 param(
     [ValidateSet('init','status','link','update','purge','shims')]

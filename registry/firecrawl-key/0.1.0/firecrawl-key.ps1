@@ -4,7 +4,8 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
-$stateDir = 'C:\Scripts\tools\.firecrawl-auth'
+# Состояние авторизации: каталог инструментов (уровнем выше registry\)
+$stateDir = Join-Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) '.firecrawl-auth'
 New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
 $stateFile = Join-Path $stateDir 'session.json'
 

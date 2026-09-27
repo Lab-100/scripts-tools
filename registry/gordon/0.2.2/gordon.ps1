@@ -10,9 +10,12 @@ try { [Console]::InputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 try { $OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $ErrorActionPreference = 'Continue'
 
+# Каталог инструментов (каталог с шимами): уровнем выше registry\
+$toolsRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
+
 # Ротация облачных провайдеров (кредиты бесплатных объёмов) + фолбэк на локальный Model Runner.
 # Порядок конфига: -ProvidersJson > env GORDON_PROVIDERS_JSON > рядом со скриптом >
-# USERPROFILE\.devstation > legacy C:\Scripts\tools.
+# USERPROFILE\.devstation > каталог инструментов.
 $seed = @(
     @{ name = 'groq';        env = 'GROQ_API_KEY';         model = 'groq/llama-3.3-70b-versatile';  url = 'https://console.groq.com' },
     @{ name = 'google';      env = 'GEMINI_API_KEY';       model = 'google/gemini-2.5-flash';       url = 'https://aistudio.google.com/apikey' },
@@ -32,7 +35,7 @@ function Resolve-ProvidersJson {
     if (Test-Path $side) { return $side }
     $home = Join-Path $env:USERPROFILE '.devstation\gordon-providers.json'
     if (Test-Path $home) { return $home }
-    $legacy = 'C:\Scripts\tools\gordon-providers.json'
+    $legacy = Join-Path $toolsRoot 'gordon-providers.json'
     if (Test-Path $legacy) { return $legacy }
     return ''
 }

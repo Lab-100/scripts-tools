@@ -29,9 +29,14 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
 $off = [System.Text.Encoding]::UTF8
+# Переносимые корни (машинные пути не зашиты)
+$regRoot    = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+$toolsRoot  = Split-Path $regRoot -Parent
+$logDirEnv  = if ($env:INVR_LOG_DIR) { $env:INVR_LOG_DIR } else { [Environment]::GetEnvironmentVariable('INVR_LOG_DIR', 'User') }
+$logDir     = if ($logDirEnv) { $logDirEnv } else { Join-Path $toolsRoot 'Logs' }
 $LogPath = Join-Path $env:USERPROFILE '.local\share\opencode\log\opencode.log'
-$WdPath  = 'C:\Scripts\tools\mcp-watchdog\state\current.json'
-$WdLog   = 'C:\Scripts\Logs\mcp-watchdog.log'
+$WdPath  = Join-Path $toolsRoot 'mcp-watchdog\state\current.json'
+$WdLog   = Join-Path $logDir 'mcp-watchdog.log'
 
 # ---------- сбор статусов ----------
 function Get-NodeStatus {

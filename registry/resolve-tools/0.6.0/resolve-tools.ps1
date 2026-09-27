@@ -15,17 +15,24 @@
     update - git pull реестра (опц.) + повторный резолв + перелинковка
     purge  - удалить tools\ линки и state (реестр не трогается)
 
-.EXAMPLE
+  Каталог junction-ов переопределяется манифестом: "links": { "dir": "tools-links" }.
+
+  Генерируемые шимы переносимые: путь к реестру не подставляется, а ищется
+  самим шимом (env INVR_REGISTRY > <каталог шима>\registry > <каталог
+  шима>\tools\registry), поэтому реестр можно публиковать без машинных путей.
+
   pwsh resolve-tools.ps1 link   -Project <путь-к-проекту>
   pwsh resolve-tools.ps1 status -Project <путь-к-проекту>
 #>
 param(
-    [ValidateSet('init','status','link','update','purge')]
+    [ValidateSet('init','status','link','update','purge','shims')]
     [string]$Action = 'link',
     [string]$Project = (Get-Location),
     [string]$Registry = '',
     [switch]$DryRun,
-    [switch]$NoPull
+    [switch]$NoPull,
+    [switch]$GenerateShims,
+    [string]$ShimRoot = ''
 )
 # UTF-8 console default (no krakozyabry)
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
@@ -40,12 +47,41 @@ if (-not $Registry) {
 if (-not $Registry) {
     $Registry = Join-Path $PSScriptRoot 'registry'
 }
+if (-not (Test-Path $Registry)) {
+    $parentDir = Split-Path $PSScriptRoot -Parent
+    $grandDir  = Split-Path $parentDir -Parent
+    if ((Split-Path $grandDir -Leaf) -eq 'registry') { $Registry = $grandDir }
+}
 $registryRoot = [IO.Path]::GetFullPath($Registry)
 
 $manifestName = 'project.json'
 $stateDirName = '.inrv'
+# Каталог junction-ов: по умолчанию 'tools', переопределяется манифестом
+# ("links": { "dir": "<каталог>" }) — нужно, когда в tools\ уже лежат шимы
+# и runtime-каталоги, и junction-и туда ставить нельзя.
 $linkRootName = 'tools'
+$_mfProbe = Join-Path $projectRoot $manifestName
+if (Test-Path $_mfProbe) {
+    try {
+        $_mfTmp = Get-Content $_mfProbe -Raw | ConvertFrom-Json
+        if (($_mfTmp.PSObject.Properties.Name -contains 'links') -and $_mfTmp.links) {
+            $_ld = $_mfTmp.links.dir
+            if ($_ld) { $linkRootName = "$_ld" }
+        }
+    } catch { }
+}
 
+# Каталог плоских шимов (tools\*.ps1) - отдельный от каталога линков:
+# приоритет: -ShimRoot > манифест "shims".dir > родительский каталог реестра.
+$shimRootAbs = if ($ShimRoot) {
+    [IO.Path]::GetFullPath($ShimRoot)
+} else {
+    $_shimDir = $null
+    if (Test-Path $_mfProbe) {
+        try { $_shimDir = (Get-Content $_mfProbe -Raw | ConvertFrom-Json).shims.dir } catch { }
+    }
+    if ($_shimDir) { Join-Path $projectRoot $_shimDir } else { Split-Path $registryRoot -Parent }
+}
 function Get-Semver { param([string]$v)
     if ($v -notmatch '^(\d+)\.(\d+)\.(\d+)$') { return $null }
     return [pscustomobject]@{
@@ -186,6 +222,51 @@ function Remove-Link { param([string]$link)
     }
 }
 
+function Install-Shim { param([string]$tool, [string]$version)
+    $regToolDir = Join-Path $registryRoot "$tool\$version"
+    $linkParent = $shimRootAbs
+    if (-not (Test-Path -LiteralPath $linkParent)) { New-Item -ItemType Directory -Force -Path $linkParent | Out-Null }
+    $ps1files = Get-ChildItem -LiteralPath $regToolDir -File -Filter '*.ps1' -ErrorAction SilentlyContinue
+    if (-not $ps1files) { return }
+    foreach ($f in $ps1files) {
+        $shimName = $f.Name
+        $shimPath = Join-Path $linkParent $shimName
+        $regen = $false
+        if (Test-Path -LiteralPath $shimPath) {
+            $head = Get-Content -LiteralPath $shimPath -TotalCount 1 -ErrorAction SilentlyContinue
+            # свой шим перегенерируем (шаблон мог устареть), чужой файл не трогаем
+            if ($head -match 'INVR-Tools shim') { $regen = $true }
+            else {
+                Write-Host "  ! пропущен шим ${shimName}: на месте обычный файл (переноси как инструмент в реестр)" -ForegroundColor Yellow
+                continue
+            }
+        }
+        # Шим переносимый: путь к реестру НЕ подставляется, а ищется на месте
+        # (env INVR_REGISTRY > <каталог шима>\registry > <каталог шима>\tools\registry)
+        $content = @"
+# INVR-Tools shim (автоген локера): вызывает версию из реестра по latest.txt.
+# ДЕЛАТЬ РУКАМИ В ШИМ НЕЛЬЗЯ — изменения в registry\<tool>\<version>\.
+# Шим переносимый: реестр ищется от расположения самого шима, поэтому
+# одинаково работает в клоне реестра, в плоском каталоге инструментов и в
+# раскладке дистрибутора (шим в <tool-dir>, реестр в <tool-dir>\tools\registry).
+`$tool  = '$tool'
+`$entry = '$shimName'
+`$regRoot = if (`$env:INVR_REGISTRY -and (Test-Path -LiteralPath `$env:INVR_REGISTRY)) { `$env:INVR_REGISTRY }
+           elseif (Test-Path -LiteralPath (Join-Path `$PSScriptRoot 'registry')) { Join-Path `$PSScriptRoot 'registry' }
+           elseif (Test-Path -LiteralPath (Join-Path `$PSScriptRoot 'tools\registry')) { Join-Path `$PSScriptRoot 'tools\registry' }
+           else { Join-Path `$PSScriptRoot 'registry' }
+`$latest = (Get-Content (Join-Path `$regRoot "\`$tool\latest.txt") -Raw).Trim()
+`$target = Join-Path `$regRoot "\`$tool\`$latest\`$entry"
+if (-not (Test-Path -LiteralPath `$target)) { throw "INVR: нет `$tool версии `$latest (запусти resolve-tools.ps1 update)" }
+& `$target @args
+exit `$LASTEXITCODE
+"@
+        Set-Content -LiteralPath $shimPath -Value $content -Encoding utf8
+        $note = if ($regen) { ' (обновлён)' } else { '' }
+        Write-Host "  shim: $shimName -> registry\$tool\<latest>$note" -ForegroundColor Cyan
+    }
+}
+
 function Install-Link { param([string]$tool, [string]$version)
     $regToolDir = Join-Path $registryRoot "$tool\$version"
     if (-not (Test-Path -LiteralPath $regToolDir)) { throw "Нет каталога реестра: $regToolDir" }
@@ -297,6 +378,7 @@ switch ($Action) {
             $tool = $prop.Name; $range = $prop.Value
             $v = Resolve-Tool $tool $range
             Install-Link $tool $v
+            if ($GenerateShims) { Install-Shim $tool $v }
         }
         if ($DryRun) { Write-Host "DRY-RUN: реальных изменений не внесено" -ForegroundColor Yellow }
     }
@@ -312,6 +394,23 @@ switch ($Action) {
         & $PSCommandPath link -Project $projectRoot -Registry $registryRoot
     }
 
+    'shims' {
+        if (-not (Test-Path $registryRoot)) { throw "Реестр не найден: $registryRoot" }
+        $shimParent = $shimRootAbs
+        if (-not (Test-Path $shimParent)) { throw "Каталог для шимов не найден: $shimParent" }
+        $count = 0
+        foreach ($toolDir in (Get-ChildItem -LiteralPath $registryRoot -Directory | Sort-Object Name)) {
+            $latestFile = Join-Path $toolDir.FullName 'latest.txt'
+            if (-not (Test-Path -LiteralPath $latestFile)) { continue }
+            $v = (Get-Content -LiteralPath $latestFile -Raw).Trim()
+            if (-not (Test-Path (Join-Path $toolDir.FullName $v))) { continue }
+            Install-Shim $toolDir.Name $v
+            $count++
+        }
+        Write-Host ""
+        Write-Host "Шимы: обработано инструментов $count, каталог $shimParent" -ForegroundColor Cyan
+    }
+
     'purge' {
         $toolsDir = Join-Path $projectRoot $linkRootName
         if (-not (Test-Path $toolsDir)) { 'tools\ уже нет.'; exit 0 }
@@ -324,6 +423,14 @@ switch ($Action) {
                 # .inrv — удаляем только сам каталог state (файлы)
             } else {
                 Write-Host "  оставлено (не линк): $($_.Name)"
+            }
+        }
+        # удалить автоген-шимы (только с нашей меткой)
+        Get-ChildItem $toolsDir -File -Filter '*.ps1' -ErrorAction SilentlyContinue | ForEach-Object {
+            $first = Get-Content -LiteralPath $_.FullName -TotalCount 1 -ErrorAction SilentlyContinue
+            if ($first -match 'INVR-Tools shim') {
+                Remove-Item -LiteralPath $_.FullName -Force
+                Write-Host "  удалён шим: $($_.Name)"
             }
         }
         $stateDir = Join-Path $toolsDir $stateDirName

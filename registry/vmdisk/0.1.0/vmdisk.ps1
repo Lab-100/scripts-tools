@@ -9,9 +9,12 @@
 .USAGE
   pwsh vmdisk.ps1 new-vmdisk -Name test1 -SizeGB 40 -Purpose 'vm test' [-KeepMounted]
   pwsh vmdisk.ps1 list
-  pwsh vmdisk.ps1 inspect -Path E:\Hyper-V\test1.vhdx
-  pwsh vmdisk.ps1 mark -Path E:\Hyper-V\old.vhdx -Purpose 'legacy test'
-  pwsh vmdisk.ps1 remove -Path E:\Hyper-V\test1.vhdx [-Force]
+  pwsh vmdisk.ps1 inspect -Path <корень-виртуальных-дисков>\test1.vhdx
+  pwsh vmdisk.ps1 mark -Path <корень-виртуальных-дисков>\old.vhdx -Purpose 'legacy test'
+  pwsh vmdisk.ps1 remove -Path <корень-виртуальных-дисков>\test1.vhdx [-Force]
+
+  Корень виртуальных дисков: -RootDir > env INVR_VM_ROOT > первый несистемный
+  диск\Hyper-V (профиль пользователя, если несистемных дисков нет).
 #>
 param(
     [ValidateSet('new-vmdisk', 'list', 'inspect', 'mark', 'remove')]
@@ -20,12 +23,29 @@ param(
     [int]$SizeGB = 40,
     [string]$Purpose = '',
     [string]$Path = '',
-    [string]$RootDir = 'E:\Hyper-V',
+    [string]$RootDir = '',
     [switch]$KeepMounted,
     [switch]$Force
 )
 
 $ErrorActionPreference = 'Stop'
+# Корень виртуальных дисков: env INVR_VM_ROOT > первый несистемный диск (не C:)
+# с готовым фиксированным томом. Get-PSDrive отдаёт и неготовые приводы
+# (CD/DVD), поэтому тип и готовность тома проверяются через DriveInfo.
+function Get-DefaultVmRoot {
+    foreach ($d in (Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue |
+                    Where-Object { $_.Name -ne 'C' -and $_.Root } | Sort-Object Name)) {
+        try {
+            $di = [System.IO.DriveInfo]::new($d.Root)
+            if ($di.IsReady -and $di.DriveType -eq [System.IO.DriveType]::Fixed) { return (Join-Path $d.Root 'Hyper-V') }
+        } catch { }
+    }
+    return (Join-Path $env:USERPROFILE 'Hyper-V')
+}
+if (-not $RootDir) {
+    try { $envRoot = [Environment]::GetEnvironmentVariable('INVR_VM_ROOT'); if ($envRoot) { $RootDir = $envRoot } } catch {}
+}
+if (-not $RootDir) { $RootDir = Get-DefaultVmRoot }
 $MarkerName = '.devstation-created'
 $ManifestName = '.devstation-disks.json'
 $manifestPath = Join-Path $RootDir $ManifestName
@@ -147,6 +167,7 @@ switch ($Action) {
     }
 
     'list' {
+        if (-not (Test-Path -LiteralPath $RootDir)) { "Каталог виртуальных дисков не найден: $RootDir"; return }
         Get-ChildItem -Path $RootDir -Filter '*.vhdx' | ForEach-Object {
             $entry = Get-Entry $_.FullName (Get-Manifest)
             $attached = Test-AttachedToVm $_.FullName

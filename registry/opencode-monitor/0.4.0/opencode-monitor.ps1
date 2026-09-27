@@ -30,6 +30,9 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
 $LogPath = Join-Path $env:USERPROFILE '.local\share\opencode\log\opencode.log'
+# Каталог инструментов (уровнем выше registry\): состояние демона рядом с шимами
+$toolsRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
+$WdPath = Join-Path $toolsRoot 'mcp-watchdog\state\current.json'
 $off = [System.Text.Encoding]::UTF8
 
 # ---------- сбор данных ----------
@@ -78,7 +81,7 @@ function Invoke-OcStats {
       }
     }
   }
-  $wd = Get-Content 'C:\Scripts\tools\mcp-watchdog\state\current.json' -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json -ErrorAction SilentlyContinue
+  $wd = Get-Content $WdPath -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json -ErrorAction SilentlyContinue
   $mcpSummary = ''
   if ($wd) {
     $sm = @($wd.checks.PSObject.Properties | ForEach-Object { $_.Name + '=' + $_.Value.status }) -join ' '

@@ -20,8 +20,8 @@ pwsh -NoProfile -File .\install.ps1
 Параметры:
 | Параметр | По умолчанию | Назначение |
 |---|---|---|
-| `-ToolsDir` | `C:\Scripts\tools` | Целевой каталог утилит |
-| `-PluginsDir` | `C:\Scripts\.opencode\plugins` | Целевой каталог плагинов |
+| `-ToolsDir` | каталог уровнем выше `registry\` | Целевой каталог утилит |
+| `-PluginsDir` | `<рабочее пространство>\.opencode\plugins`, иначе `%USERPROFILE%\.opencode\plugins` | Целевой каталог плагинов |
 | `-Force` | — | Создать целевые каталоги, если их нет |
 | `-DryRun` | — | Показать, что будет сделано, без записи |
 | `-CheckOnly` | — | Только проверка среды и источников |
@@ -55,7 +55,7 @@ pwsh -NoProfile -File .\install.ps1
 
 ## Запуск графа инфраструктуры
 ```powershell
-cmd /c start "" /min pwsh -NoProfile -STA -File C:\Scripts\tools\infra-graph.ps1
+cmd /c start "" /min pwsh -NoProfile -STA -File <корень-инструментов>\infra-graph.ps1
 ```
 - ВАЖНО: не использовать `-WindowStyle Hidden` (наследуется в WinForms-форму, `vis=False`).
 - `-STA` обязателен: pwsh по умолчанию MTA, WinForms-окно/трей разрушаются.
@@ -67,4 +67,4 @@ cmd /c start "" /min pwsh -NoProfile -STA -File C:\Scripts\tools\infra-graph.ps1
 - `-RestoreLayout` (не реализовано в 0.1.0) — сброс сохранённой раскладки.
 
 ## Режимы отката
-Локальная установка инструментов — `C:\Scripts\tools\` (вне этого git). Изменения утилит поддержаны каталогом отката `E:\rollback-catalog` (инструмент `C:\Scripts\tools\backup-util.ps1`).
+Локальная установка инструментов — каталог с шимами (уровнем выше `registry\`, вне этого git). Изменения утилит поддержаны каталогом отката (первый несистемный диск, `INVR_ROLLBACK_ROOT` или `rollback-root.txt`) — инструмент `backup-util.ps1`.
