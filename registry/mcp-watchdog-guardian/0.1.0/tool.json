@@ -1,0 +1,38 @@
+{
+  "schema": "invr.tool/1",
+  "name": "mcp-watchdog-guardian",
+  "version": "0.1.0",
+  "description": "Сторожевой демон (watchdog) над демоном mcp-watchdog: следит за живостью процесса (HKCU Run) и сам его перезапускает, если тот завис (хвост зависший/поток отдал — демон opencode, демон-страж упал по таймауту); при уходе opencode в сон демон себя будит. Ведёт журнал в каталоге логов и state\\guardian.pid",
+  "entry": "mcp-watchdog-guardian.ps1",
+  "type": "service",
+  "requires": {
+    "pwsh": ">=7.0"
+  },
+  "dependencies": [
+    "mcp-watchdog"
+  ],
+  "runtime": {
+    "stateDir": "<tools-root>/mcp-watchdog-guardian/state",
+    "logFile": "<logs-root>/mcp-watchdog-guardian.log",
+    "launch": "Start-Process pwsh -ArgumentList '-NoProfile','-File','<tools-root>\\mcp-watchdog-guardian.ps1','-RuntimeDir','<tools-root>\\mcp-watchdog-guardian' -WindowStyle Hidden",
+    "autostart": {
+      "type": "HKCU Run",
+      "valueName": "McpWatchdogGuardian",
+      "command": "cmd.exe /c \"<tools-root>\\mcp-watchdog-guardian.cmd\""
+    }
+  },
+  "runtimeNote": "Пути размещения задаются на целевой машине. <tools-root> = каталог с плоскими шимами инструментов (tools), <logs-root> = каталог журналов (переменная INVR_LOG_DIR). Конкретные пути машины владельца намеренно не публикуются.",
+  "interfaces": {
+    "cli": {
+      "invoke": "pwsh -File {entry} -RuntimeDir <каталог состояния> [-Once]",
+      "commands": [
+        "daemon (по умолчанию)",
+        "Once"
+      ]
+    }
+  },
+  "compat": {
+    "breaks": []
+  },
+  "published": "2026-09-27"
+}

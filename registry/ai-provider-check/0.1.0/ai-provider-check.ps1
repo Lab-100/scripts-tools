@@ -43,4 +43,4 @@ if ($ollamaOk) {
 
 Write-Host ''
 Write-Host 'Порядок OpenClaw-failover: openrouter/auto -> mistral -> ollama/hermes3:8b -> gemini-3.6 -> anthropic'
-Write-Host '403 = гео-блок РФ (нужен VPN), 401 = неверный ключ, 429/5xx = лимит/сбой провайдера.'
+Write-Host '403 = гео-блок/региональная недоступность (нужен VPN), 401 = неверный ключ, 429/5xx = лимит/сбой провайдера.'

@@ -48,7 +48,7 @@ function Get-InputInfo {
 $providerDefs = @(
     @{ name = 'firecrawl'; kind = 'file'; exts = @('.pdf', '.html', '.htm', '.docx', '.doc', '.odt', '.rtf', '.xlsx', '.xls'); keyvars = @(); free_note = 'Free по кредитам (сейчас 1394)'; method = 'Invoke-FirecrawlParse' },
     @{ name = 'xparse'; kind = 'both'; exts = @('.pdf', '.html', '.rtf', '.docx', '.xlsx', '.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.webp'); keyvars = @(); free_note = '1000 стр/день keyless (xparse-cli --api free)'; method = 'Invoke-XParse' },
-    @{ name = 'gemini'; kind = 'both'; exts = @('.pdf', '.png', '.jpg', '.jpeg', '.webp', '.tiff', '.bmp'); keyvars = @('GEMINI_API_KEY'); free_note = 'Free tier (ГЕОБЛОК из РФ — включается конфигом)'; method = 'Invoke-Gemini'; model = 'gemini-2.0-flash' },
+    @{ name = 'gemini'; kind = 'both'; exts = @('.pdf', '.png', '.jpg', '.jpeg', '.webp', '.tiff', '.bmp'); keyvars = @('GEMINI_API_KEY'); free_note = 'Free tier (включается конфигом, недоступен в некоторых регионах)'; method = 'Invoke-Gemini'; model = 'gemini-2.0-flash' },
     @{ name = 'ocrspace'; kind = 'image'; exts = @('.pdf', '.png', '.jpg', '.jpeg', '.tiff', '.gif', '.bmp'); keyvars = @('OCRSPACE_API_KEY'); free_note = '25k/мес, 500/день/IP, 1МБ, 3 стр'; method = 'Invoke-OcrSpace' },
     @{ name = 'mistral'; kind = 'both'; exts = @('.pdf', '.png', '.jpg', '.jpeg'); keyvars = @('MISTRAL_API_KEY'); free_note = 'Free mode, лимит в аккаунте'; method = 'Invoke-Mistral' },
     @{ name = 'textin'; kind = 'both'; exts = @('.pdf', '.png', '.jpg', '.jpeg'); keyvars = @('TEXTIN_APP_ID', 'TEXTIN_APP_SECRET'); free_note = 'Free-пробник, квота не раскрыта'; method = 'Invoke-TextIn' },

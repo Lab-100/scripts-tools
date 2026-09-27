@@ -2,7 +2,7 @@
   "schema": "inrv.tool/1",
   "name": "backup-util",
   "version": "0.2.0",
-  "description": "Каталог откатов: backup/list/undo с restore-скриптами. Корень из rollback-root.txt (задаётся deploy) или E:\\rollback-catalog",
+  "description": "Каталог откатов: backup/list/undo с restore-скриптами. Корень из rollback-root.txt (задаётся deploy) или переменной INVR_ROLLBACK_ROOT; по умолчанию — несистемный диск",
   "entry": "backup-util.ps1",
   "type": "script",
   "requires": {

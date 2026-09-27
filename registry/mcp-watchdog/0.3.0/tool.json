@@ -1,7 +1,7 @@
 {
   "schema": "invr.tool/1",
   "name": "mcp-watchdog",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Демон-страж MCP-серверов и сервисов оркестратора: каждые N секунд проверяет local-llm, firecrawl, MCP_DOCKER, ollama, browsertool, стек INVR, Docker daemon и факт жизни opencode; автовосстанавливает сервисы, ведёт state\\current.json и журнал заявок в requests\\",
   "entry": "mcp-watchdog.ps1",
   "type": "service",

@@ -42,7 +42,11 @@
     },
     {
       "name": "mcp-watchdog",
-      "latest": "0.2.0"
+      "latest": "0.3.0"
+    },
+    {
+      "name": "mcp-watchdog-guardian",
+      "latest": "0.1.0"
     },
     {
       "name": "opencode-monitor",

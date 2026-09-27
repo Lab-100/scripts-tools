@@ -7,7 +7,14 @@ const PRESET =
 	"$env:PYTHONUTF8='1';" +
 	"$env:PYTHONIOENCODING='utf-8';\n";
 
-const LOG_DIR = "C:\\Scripts\\Logs";
+// Каталог журнала переносимый: задаётся переменной INVR_LOG_DIR, иначе —
+// стандартный каталог состояния пользователя. Конкретные пути машины
+// владельца в публичном реестре не публикуются.
+const LOG_DIR =
+	process.env.INVR_LOG_DIR ||
+	(process.env.USERPROFILE
+		? process.env.USERPROFILE + "\\.devstation\\logs"
+		: ".");
 const LOG_FILE = LOG_DIR + "\\utf8-console-plugin.log";
 
 function mark(message) {
