@@ -1,0 +1,100 @@
+name: CI
+
+# Непрерывная проверка репозитория: статический анализ PowerShell, проверка
+# синтаксиса (и Pester-тесты, когда они появятся) и поиск секретов.
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  psscriptanalyzer:
+    name: PSScriptAnalyzer
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Получить код
+        uses: actions/checkout@v7
+
+      - name: Установить PSScriptAnalyzer
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module -Name PSScriptAnalyzer -Scope CurrentUser -Force -AllowClobber
+          "PSScriptAnalyzer: $((Get-Module -ListAvailable PSScriptAnalyzer | Select-Object -First 1).Version)"
+
+      - name: Статический анализ PowerShell-файлов
+        run: ./tools/ci/invoke-psscriptanalyzer.ps1 -FailOnFinding
+
+      - name: Приложить отчёт анализатора
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: psscriptanalyzer-report
+          path: artifacts/psscriptanalyzer/
+          if-no-files-found: ignore
+
+  syntax:
+    name: Синтаксис и Pester
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Получить код
+        uses: actions/checkout@v7
+
+      - name: Pester-тесты
+        run: |
+          # Pester-тестов в репозитории пока нет, поэтому шаг только сообщает
+          # об этом и выходит. Проверка синтаксиса выполняется следующим шагом
+          # в любом случае — это минимальная проверка успешности сборки.
+          $tests = @(Get-ChildItem -Path tests -Filter '*.Tests.ps1' -Recurse -ErrorAction SilentlyContinue)
+          if ($tests.Count -eq 0) {
+            Write-Host 'Pester-тестов в репозитории нет. Вместо них выполняется проверка синтаксиса всех *.ps1/*.psm1/*.psd1 парсером PowerShell.'
+            exit 0
+          }
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module -Name Pester -Scope CurrentUser -Force -MinimumVersion 5.5.0
+          "Pester: $((Get-Module -ListAvailable Pester | Select-Object -First 1).Version)"
+          Invoke-Pester -Path tests -CI
+
+      - name: Проверка синтаксиса всех PowerShell-файлов
+        run: ./tools/ci/invoke-syntax-check.ps1
+
+      - name: Приложить отчёт проверки синтаксиса
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: syntax-report
+          path: artifacts/syntax/
+          if-no-files-found: ignore
+
+  secrets:
+    name: Поиск секретов
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Получить код
+        uses: actions/checkout@v7
+
+      # Скрипт никогда не печатает найденные значения: только путь, номер
+      # строки и тип находки. Ненулевой код возврата валит сборку.
+      - name: Просканировать репозиторий на секреты
+        run: ./tools/ci/scan-secrets.ps1 -Report artifacts/secrets/findings.csv
+
+      - name: Приложить отчёт поиска секретов
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: secrets-report
+          path: artifacts/secrets/
+          if-no-files-found: ignore

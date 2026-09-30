@@ -26,3 +26,7 @@ node_modules/
 /config.local.json
 /private.local.json
 *.local.json
+
+# Отчёты непрерывной проверки (CI и локальные запуски tools\ci).
+# В репозиторий не коммитятся, в GitHub попадают как артефакты сборки.
+/artifacts/
