@@ -6,30 +6,72 @@
   Индикация на узле: работает/запущен/завис/остановлен + время работы.
   Сворачивается в трей. Запускать В ИНТЕРАКТИВНОЙ СЕССИИ (из opencode окна не видны).
   Режимы:
-    без аргументов   - GUI-окно с графом и треем (одна консоль прячется)
-    -KeepConsole     - не прятать консоль (запуск из собственного терминала)
+    без аргументов   - GUI-окно с графом и треем
     -Status          - разовый текстовый статус всех узлов (для проверки)
     -Shot <png>      - отрисовать граф в PNG (offline-рендер, можно звать из opencode)
+    -Daemon          - монитор БЕЗ окна: тик 3 с, состояние + персистентность
+    -Daemon -Once    - один тик и выход (для тестов)
+
+  Модель 0.7.0: очки у ВСЕХ действующих лиц + ЯВНОЕ состояние (причина) + владение
+  и интент + персистентность очков в state\nodes.json.
+    Классы узлов (определяют пол очков и допустимость выгрузки):
+      core    - oc, watchdog, guardian, monitor: пол 1.0, НЕ гаснут,
+                выгрузка ЗАПРЕЩЕНА в коде; вместо свежести — здоровье и молчание
+      agent   - субагенты/роутеры (openrouter, gordon, invr): пол 0.0, гаснут,
+                0% = unloaded, подъём через вотчдог (Request-AgentWake)
+      demand  - инструменты по требованию (browsertool, firecrawl, local-llm,
+                MCP_DOCKER, doc-extract, backup-util, resolve-tools, gordon-setup,
+                browser): пол 0.0, 0% = unloaded (НЕ поломка), есть интент и владелец
+      service - постоянные службы/хранилища (ollama, ollama-prov, docker, lab,
+                rollback, gh, cloud): пол 0.5, не гаснут
+    Состояния: active | idle | unloaded | need-guard | fault
+    Ключевое правило: инструмент с интентом none/down, который не запущен, —
+    это `unloaded` и СЕРЫЙ, а НЕ `red`. Красный = реально упал и его ждут.
 #>
 param(
   [switch]$Status,
   [string]$Shot,
-  [switch]$KeepConsole
+  [switch]$Daemon,
+  [switch]$Once,
+  [string]$StateFile,
+  [string]$IntentsFile,
+  [int]$FlushSec = 60,
+  [int]$MaxAgeSec = 1800,
+  [int]$BusyTimeoutSec = 600,
+  [int]$UnloadAfterSec = 900
 )
+# --- UTF-8: кириллица в выводе pwsh 7 (OEMCP 866 ломает чтение) ---------
+
+$ErrorActionPreference = 'Continue'
+
+try {
+
+  [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+
+  [Console]::InputEncoding  = [System.Text.UTF8Encoding]::new($false)
+
+  $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+
+  $env:PYTHONUTF8 = '1'
+
+  $env:PYTHONIOENCODING = 'utf-8'
+
+} catch { }
+
+# ------------------------------------------------------------------------
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
 $off = [System.Text.Encoding]::UTF8
+# Переносимые корни (машинные пути не зашиты)
+$regRoot    = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+$toolsRoot  = Split-Path $regRoot -Parent
+$logDirEnv  = if ($env:INVR_LOG_DIR) { $env:INVR_LOG_DIR } else { [Environment]::GetEnvironmentVariable('INVR_LOG_DIR', 'User') }
+$logDir     = if ($logDirEnv) { $logDirEnv } else { Join-Path $toolsRoot 'Logs' }
 $LogPath = Join-Path $env:USERPROFILE '.local\share\opencode\log\opencode.log'
-$regRoot   = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-$toolsRoot = Split-Path $regRoot -Parent
-# Рабочие файлы демона-стража — от корня инструментов (или INVR_TOOLS_ROOT),
-# раньше были зашиты на <tools-root>.
-$WdRoot    = if ($env:INVR_TOOLS_ROOT -and (Test-Path -LiteralPath $env:INVR_TOOLS_ROOT)) { [IO.Path]::GetFullPath($env:INVR_TOOLS_ROOT) } else { $toolsRoot }
-$WdPath    = if ($env:INVR_WATCHDOG_STATE_FILE) { $env:INVR_WATCHDOG_STATE_FILE } else { Join-Path $WdRoot 'mcp-watchdog\state\current.json' }
-$logDirEnv = if ($env:INVR_LOG_DIR) { $env:INVR_LOG_DIR } else { [Environment]::GetEnvironmentVariable('INVR_LOG_DIR', 'User') }
-$WdLog     = if ($logDirEnv) { Join-Path $logDirEnv 'mcp-watchdog.log' } else { Join-Path (Split-Path $toolsRoot -Parent) 'Logs\mcp-watchdog.log' }
+$WdPath  = Join-Path $toolsRoot 'mcp-watchdog\state\current.json'
+$WdLog   = Join-Path $logDir 'mcp-watchdog.log'
 
 # ---------- переносимые пути ----------
 # МАШИННЫХ ПУТЕЙ В КОДЕ НЕТ: внешний каталог задаётся переменной окружения
@@ -65,6 +107,31 @@ $OllamaModelsDir = Resolve-EnvPath 'INVR_OLLAMA_MODELS_DIR' @(
   (Join-Path $toolsRoot 'OllamaModels'),
   $(if ($cwdPath) { Join-Path $cwdPath 'OllamaModels' } else { $null })
 )
+# каталог рантайм-состояния карты — ВНЕ каталога версии (версия в реестре неизменяема)
+$StateDir = Join-Path $toolsRoot 'monitor\state'
+
+# ---------- рабочие файлы состояния (персистентность) ----------
+# по умолчанию <tools>\monitor\state\nodes.json; путь переопределяется -StateFile
+$script:statePath = if ($StateFile) {
+  $StateFile
+} else {
+  [Environment]::GetEnvironmentVariable('INFRAGRAPH_STATE_FILE', 'User')
+}
+if (-not $script:statePath) { $script:statePath = Join-Path $StateDir 'nodes.json' }
+$script:eventsPath   = Join-Path (Split-Path $script:statePath -Parent) 'events.log'
+$script:FlushSec     = $FlushSec
+$script:MaxAgeSec    = $MaxAgeSec
+$script:BusyTimeoutSec = $BusyTimeoutSec
+$script:UnloadAfterSec  = $UnloadAfterSec
+# файлы интентов: browsertool.json ({"desired":"up|down"}) + общий intents.json
+$script:intentsPath  = if ($IntentsFile) { $IntentsFile } else { [Environment]::GetEnvironmentVariable('INFRAGRAPH_INTENTS_FILE', 'User') }
+$WdIntentPath        = if ($script:intentsPath) { $script:intentsPath } else { Join-Path $toolsRoot 'mcp-watchdog\state\browsertool.json' }
+$WdGenericIntent     = if ($script:intentsPath) { $script:intentsPath } else { Join-Path $toolsRoot 'mcp-watchdog\state\intents.json' }
+# журнал ошибок обработчиков WinForms — тоже вне версии
+$script:ErrLogPath   = Join-Path $StateDir 'infra-graph.err.log'
+$script:PosFileNew   = Join-Path $StateDir 'infra-graph.positions.json'
+$script:PosFileLegacy = Join-Path $PSScriptRoot 'infra-graph.positions.json'
+$script:runMode = if ($Daemon) { 'daemon' } elseif ($Status) { 'status' } elseif ($Shot) { 'shot' } else { 'gui' }
 
 # ---------- сбор статусов ----------
 function Get-NodeStatus {
@@ -72,6 +139,9 @@ function Get-NodeStatus {
   if (Test-Path $WdPath) {
     try { $wd = Get-Content $WdPath -Raw | ConvertFrom-Json -ErrorAction Stop } catch { $wd = $null }
   }
+  # интенты нужны уже здесь: они решают gray (выгружен по требованию) против red (упал)
+  Read-IntentFiles
+  if (-not $script:procs) { $script:procs = Get-ProcsByNode }
 
   # открытые сессии opencode
   $oc = @(Get-Process OpenCode -ErrorAction SilentlyContinue)
@@ -151,7 +221,7 @@ function Get-NodeStatus {
   } catch { }
   # открытые заявки демона (тикеты проверки серверов)
   $openTk = 0
-  $reqDir = Join-Path $PSScriptRoot 'mcp-watchdog\requests'
+  $reqDir = Join-Path $toolsRoot 'mcp-watchdog\requests'
   if (Test-Path $reqDir) {
     foreach ($f in @(Get-ChildItem -LiteralPath $reqDir -Filter 'chk_*.json' -ErrorAction SilentlyContinue)) {
       try {
@@ -164,6 +234,24 @@ function Get-NodeStatus {
     if ($openTk -gt 0) { "заявок: $openTk" } else { 'все сервисы в норме' }
   } else { 'демон не запущен' }
   $nodes += New-Node 'watchdog' "mcp-watchdog`nдемон-страж" $wdStatus $wdUp $wdDet
+
+  # 5a. страж демона (core): поднимает mcp-watchdog, если тот умер
+  $gProc = @()
+  try {
+    $gProc = @(Get-CimInstance Win32_Process -Filter "Name='pwsh.exe'" -ErrorAction Stop |
+      Where-Object { $_.CommandLine -match 'mcp-watchdog-guardian' })
+  } catch { }
+  $gSt = if ($gProc.Count -gt 0) { 'green' } else { 'red' }
+  $gUp = '—'
+  if ($gProc.Count -gt 0) {
+    $gSw = Get-Process -Id $gProc[0].ProcessId -ErrorAction SilentlyContinue
+    if ($gSw -and $gSw.StartTime) { $gUp = ((Get-Date) - $gSw.StartTime).ToString('h\:mm\:ss') }
+  }
+  $gDet = if ($gProc.Count -gt 0) { "pid: $($gProc[0].ProcessId)" } else { 'страж не запущен' }
+  $nodes += New-Node 'guardian' "mcp-watchdog-guardian`nстраж демона" $gSt $gUp $gDet
+
+  # 5b. сам монитор карты (core, guard-required): держит состояние очков на диске
+  $nodes += New-Node 'monitor' "infra-graph`nмонитор состояния" 'green' '—' "guard-required; режим: $($script:runMode); pid: $PID"
 
   # 6. пул Lab100
   $labDet = if ($LabDir) { $LabDir } else { 'не задан (INVR_LAB_DIR)' }
@@ -180,6 +268,10 @@ function Get-NodeStatus {
   }
   $nodes += New-Node 'gh' "GitHub`nLab-100/*" 'green' '' 'приватные репо'
 
+  # ЕДИНОЕ ПРАВИЛО цвета: инструмент с интентом none/down, который не запущен, —
+  # это «выгружен по требованию» (серый), а НЕ поломка (красный).
+  foreach ($n in $nodes) { $n.Status = Resolve-NodeStatusColor $n.Id $n.Status }
+
   return @{ Nodes = $nodes; Opencode = $oc; Model = $model }
 }
 
@@ -194,10 +286,12 @@ function Get-ProcsByNode {
     'ollama'      = { $_.Name -match 'ollama' }
     'local-llm'   = { $_.Name -eq 'python.exe' -and $_.CommandLine -match 'llm_mcp_server' }
     'firecrawl'   = { $_.Name -eq 'node.exe' -and $_.CommandLine -match 'firecrawl' }
-    'MCP_DOCKER'  = { ($_.Name -eq 'node.exe' -or $_.Name -eq 'bun.exe') -and $_.CommandLine -match 'mcp' }
+    'MCP_DOCKER'  = { $_.CommandLine -match 'mcp\s+gateway' -or (($_.Name -eq 'node.exe' -or $_.Name -eq 'bun.exe') -and $_.CommandLine -match 'mcp' -and $_.CommandLine -notmatch 'firecrawl') }
     'docker'      = { $_.Name -match 'Docker Desktop' -or $_.Name -match 'com.docker.backend' -or $_.Name -match 'vpnkit' -or $_.Name -match 'wsl' }
     'browsertool' = { $_.Name -eq 'node.exe' -and $_.CommandLine -match 'driver.mjs' }
-    'watchdog'    = { $_.Name -eq 'pwsh.exe' -and $_.CommandLine -match 'mcp-watchdog' }
+    'watchdog'    = { $_.Name -eq 'pwsh.exe' -and $_.CommandLine -match 'mcp-watchdog' -and $_.CommandLine -notmatch 'mcp-watchdog-guardian' }
+    'guardian'    = { $_.Name -eq 'pwsh.exe' -and $_.CommandLine -match 'mcp-watchdog-guardian' }
+    'monitor'     = { $_.ProcessId -eq $PID }
     'lab'         = { $_.Name -eq 'python.exe' -and $_.CommandLine -match 'lab100' }
   }
   $out = @{}
@@ -211,6 +305,10 @@ function Get-ProcsByNode {
       Ram  = if ($ram) { [long]$ram } else { 0 }
       CpuTicks = if ($cpu) { [double]$cpu } else { 0.0 }   # накапливаемое время CPU в тиках
       Where = 'CPU'
+      # pid-ы узла: переиспользуем ЭТОТ ЖЕ опрос для владения/персистентности,
+      # второй Get-CimInstance не делаем
+      Pids = (($ps.ProcessId | Sort-Object) -join ',')
+      ProcCount = $ps.Count
     }
   }
   return $out
@@ -218,6 +316,7 @@ function Get-ProcsByNode {
 # кэш предыдущего замера CPU и текущих значений (пересчитывается в таймере)
 $script:cpuPrev = @{}
 $script:perf = @{}
+$script:procs = $null     # последний снимок Get-ProcsByNode (переиспользуется)
 $script:diskSizes = @{}
 $script:perfLast = [DateTime]::MinValue
 
@@ -244,6 +343,7 @@ function Format-Size([long]$bytes) {
 function Update-Perf {
   $now = [DateTime]::UtcNow
   $procs = Get-ProcsByNode
+  $script:procs = $procs      # один опрос на тик: pid-ы/владение берём отсюда
   # раз в 5 минут и при первом запуске пересчитываем размеры на диске (до построения perf)
   if (($now - $script:perfLast).TotalMinutes -gt 5 -or $script:diskSizes.Count -eq 0) {
     $script:diskSizes = @{}
@@ -306,17 +406,66 @@ $script:edgeCursor = $null  # последний обработанный timest
 $script:wdCursor   = $null  # то же для лога демона-стража (встречный трафик в граф)
 $script:waking     = @{}    # id узла -> @{ Since=[DateTime] } — агенты, которых вотчдог включает
 
+# ---------- классы узлов ----------
+# Класс задаёт ПОЛ очков и допустимость выгрузки. Ключевая мысль 0.7.0:
+# очки — это ЧИСЛО (насколько узел свежий/загружен), СОСТОЯНИЕ — это ПРИЧИНА
+# (почему такое число), а КЛАСС — правила обращения с узлом.
+$script:nodeClass = @{
+  # core: пол 1.0, НЕ гаснут, выгрузка запрещена. Вместо свежести — здоровье/молчание
+  'oc'       = 'core'
+  'watchdog' = 'core'
+  'guardian' = 'core'
+  'monitor'  = 'core'
+  # agent: пол 0.0, гаснут; 0% = unloaded, подъём через вотчдог
+  'openrouter' = 'agent'
+  'gordon'     = 'agent'
+  'invr'       = 'agent'
+  # demand: инструменты по требованию; пол 0.0; 0% = unloaded (НЕ дефект)
+  'browsertool'   = 'demand'
+  'firecrawl'     = 'demand'
+  'local-llm'     = 'demand'
+  'MCP_DOCKER'    = 'demand'
+  'doc-extract'   = 'demand'
+  'backup-util'   = 'demand'
+  'resolve-tools' = 'demand'
+  'gordon-setup'  = 'demand'
+  'browser'       = 'demand'
+  # service: постоянные службы/хранилища; пол 0.5, не гаснут
+  'ollama'      = 'service'
+  'ollama-prov' = 'service'
+  'docker'      = 'service'
+  'lab'         = 'service'
+  'rollback'    = 'service'
+  'gh'          = 'service'
+  'cloud'       = 'service'
+}
+# владелец по умолчанию (интент-файлы перекрывают)
+$script:nodeOwner = @{
+  'oc' = 'user'; 'watchdog' = 'system'; 'guardian' = 'system'; 'monitor' = 'system'
+}
+
 # ---------- актуальность узлов (агентов/сервисов) ----------
-# id -> @{ Val=1.0; Busy=$false; LastReply=[DateTime]; Count=0 }
-# Val: 100% на старте; затухание 0.5%/с (1% за 2с), пол 0% (off ТОЛЬКО при 0);
-# обращение x1.4 (кум.); пока агент "работает" (Busy) значения стоят; отключение при Val<=0.005.
-# НЕ-агенты (инструменты оркестратора: rollback-каталог, gh-гитхаб) НЕ гаснут:
-# минимум 50% ("пол-яркости"), при обращении яркость растёт, под узлом — число обращений.
+# id -> @{ Val=1.0; Busy=$false; LastTouch=[DateTime]; LastReply=[DateTime]; Count=0; Err=0; Resolved=0; Fault=$false }
+# Val: 100% на старте; затухание 0.5%/с (1% за 2с), ПОЛ задаётся классом узла;
+# обращение x1.4 (кум.); пока узел "работает" (Busy) значения стоят; off при Val<=0.005.
 $script:act = @{}
 $script:actTick = (Get-Date)
+$script:bootTime = (Get-Date)
 $script:alarm = @{}   # id узла -> когда последний раз слали оркестратору сигнал «нет ответа/ошибка»
-$script:tools = @('rollback','gh')   # НЕ-агенты: инструменты оркестратора (не гаснут до 0)
-$script:PosFile = Join-Path $PSScriptRoot 'infra-graph.positions.json'   # запоминание ручной раскладки
+$script:tools = @('rollback','gh')   # инструменты оркестратора с двойным контуром (не гаснут до 0)
+# состояние/владение/интенты (заполняется Update-NodeStates раз в тик)
+$script:nodeState    = @{}   # id -> объект узла (Val/State/Intent/Owner/Class/Status/Pid)
+$script:nodeStatePrev = @{}  # id -> предыдущее State (для журнала причин)
+$script:candidates   = @()   # id кандидатов на выгрузку (НЕ выгружаем сами)
+$script:intents      = @{}   # id -> @{ Desired; Owner; Since; Source }
+$script:intentStamp  = @{}   # путь файла -> метка прочтения (чтобы не читать зря)
+$script:restoredPids = @{}   # id -> pid, восстановленный из nodes.json
+$script:evLast       = @{}   # id -> когда последний раз писали в events.log (троттлинг 10 с)
+# персистентность: файла НЕ держим открытым — открыть/записать/закрыть, и только при изменении
+$script:stateSig  = ''                       # подпись значимых полей (для «писать только при изменении»)
+$script:stateLast = [DateTime]::MinValue     # когда последний раз писали
+$script:stateDirty = $false
+$script:PosFile = $script:PosFileNew        # запоминание ручной раскладки (вне каталога версии)
 
 # шрифты и измерительная графика (рамки узлов считаются по тексту)
 $script:fTitle = [System.Drawing.Font]::new('Segoe UI Semibold', 10.5)
@@ -360,7 +509,7 @@ function Get-NodeSize($n) {
 # заранее суммируется, чтобы ни один узел не наехал на соседа.
 function Get-DefaultPositions([array]$nodeObjs) {
   $layerIds = @(
-    @('oc','watchdog'),
+    @('oc','watchdog','guardian','monitor'),
     @('ollama-prov','cloud','openrouter'),
     @('local-llm','firecrawl','MCP_DOCKER'),
     @('ollama','browsertool','docker'),
@@ -405,6 +554,8 @@ function Get-DefaultPositions([array]$nodeObjs) {
 
 function Save-Positions {
   try {
+    $dir = Split-Path $script:PosFile -Parent
+    if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
     $obj = @{}
     foreach ($k in $script:PosFrac.Keys) {
       $f = $script:PosFrac[$k]
@@ -416,8 +567,12 @@ function Save-Positions {
 
 function Initialize-PosFrac([array]$nodeObjs) {
   $saved = $null
-  if (Test-Path $script:PosFile) {
-    try { $saved = Get-Content -LiteralPath $script:PosFile -Raw | ConvertFrom-Json } catch { $saved = $null }
+  # раскладка 0.6.x лежала в каталоге версии (версия в реестре неизменяема) —
+  # читаем оттуда для совместимости, а пишем всегда в monitor\state
+  $readPath = $script:PosFile
+  if (-not (Test-Path $readPath) -and (Test-Path $script:PosFileLegacy)) { $readPath = $script:PosFileLegacy }
+  if (Test-Path $readPath) {
+    try { $saved = Get-Content -LiteralPath $readPath -Raw | ConvertFrom-Json } catch { $saved = $null }
   }
   if ($saved) {
     # позиции из файла: Xf/Yf — доли сцены (ресайз-безопасны, как и autolayout)
@@ -687,16 +842,33 @@ function Lerp-Color($cA, $cB, $t) {
 }
 
 # ---------- актуальность узлов ----------
-# floor: НЕ-агенты (инструменты) не гаснут ниже 0.5 (пол-яркости);
-# агенты/сервисы гаснут полностью — off ТОЛЬКО при Val<=0.005 (0%).
-function Get-Floor([string]$id) { if ($script:tools -contains $id) { return 0.5 } else { return 0.0 } }
+# ПОЛ очков задаётся КЛАССОМ узла (таблица $script:nodeClass):
+#   core -> 1.0 (не гаснут), service -> 0.5 (не гаснут), agent/demand -> 0.0
+# off (выгружен) наступает ТОЛЬКО при Val<=0.005.
+function Get-NodeClass([string]$id) {
+  if ($script:nodeClass.ContainsKey($id)) { return $script:nodeClass[$id] }
+  return 'service'
+}
+function Get-Floor([string]$id) {
+  switch (Get-NodeClass $id) {
+    'core'    { return 1.0 }
+    'service' { return 0.5 }
+    default   { return 0.0 }   # agent / demand
+  }
+}
+# очки с учётом класса: core-узлы ВСЕГДА 1.0 (у них нет свежести, есть здоровье)
+function Get-EffVal([string]$id) {
+  if ((Get-NodeClass $id) -eq 'core') { return 1.0 }
+  return (Get-ActVal $id)
+}
 
 # фабрика записи актуальности/ошибок узла
 # Err — число НЕРЕШЁННЫХ ошибок (эпизоды WARN/нет-ответа, доложенные оркестратору);
-# Resolved — сколько из ни х обработано (узел вернулся в OK/ответил);
+# Resolved — сколько из них обработано (узел вернулся в OK/ответил);
 # Fault — узел прямо сейчас в состоянии ошибки (эпизод не удваиваем, пока не закрыт).
 function New-ActEntry {
-  @{ Val = 1.0; Busy = $false; LastReply = (Get-Date); Count = 0; Err = 0; Resolved = 0; Fault = $false }
+  @{ Val = 1.0; Busy = $false; LastTouch = $null; LastReply = (Get-Date);
+     Count = 0; Err = 0; Resolved = 0; Fault = $false }
 }
 
 function Get-ActVal([string]$id, [bool]$create = $false) {
@@ -707,53 +879,49 @@ function Get-ActVal([string]$id, [bool]$create = $false) {
   return $script:act[$id].Val
 }
 
-# инициализация актуальности всех узлов
+# инициализация актуальности всех узлов (уже восстановленные из nodes.json не трогаем)
 function Init-Actuality($nodes) {
   foreach ($n in $nodes) {
-    if ($n.Id -in @('oc','watchdog')) { continue }
-    if (-not $script:act.ContainsKey($n.Id)) {
-      $e = New-ActEntry
-      if ($n.Id -eq 'openrouter') {
-        # openrouter — внешний роутер: выгружен по умолчанию (серый, без памяти),
-        # поднимается только по требованию оркестратора (Bump-OrWake при llm.provider=openrouter)
-        $e.Val = 0.0
-      } elseif ($script:tools -contains $n.Id) {
-        # НЕ-агенты (инструменты): сразу «пол-яркости», вспышка только при обращении
-        $e.Val = 0.5
-      }
-      $script:act[$n.Id] = $e
+    if ($script:act.ContainsKey($n.Id)) { continue }
+    $e = New-ActEntry
+    $cls = Get-NodeClass $n.Id
+    if ($cls -eq 'core') {
+      $e.Val = 1.0                                   # оркестратор/страж/демон/монитор: всегда 100%
+    } elseif ($cls -eq 'service') {
+      $e.Val = 0.5                                   # службы: «пол-яркости», вспышка при обращении
+    } elseif ($cls -eq 'agent') {
+      # внешние роутеры/агенты: выгружены по умолчанию (серый, без памяти),
+      # поднимаются по требованию оркестратора (Bump-OrWake при обращении)
+      $e.Val = 0.0
     }
+    $script:act[$n.Id] = $e
   }
 }
 
-# "к агенту/сервису обратились" (им воспользовались) — актуальность 20%,
-# агент занят (пауза в затухании); счётчик обращений Count++.
-# НЕ-агенты (инструменты) пол-яркости: при обращении вспышка яркости.
-# 100% даёт ТОЛЬКО вотчдог (Request-AgentWake) — простое использование НЕ разгоняет до максимума.
+# "к узлу обратились" (запрос) — актуальность растёт (x1.4, с пола подъём до 1.0),
+# узел занят (пауза в затухании); счётчик обращений Count++
 function Touch-NodeAct([string]$id, [switch]$Request) {
   if (-not $script:act.ContainsKey($id)) { $script:act[$id] = New-ActEntry }
   $a = $script:act[$id]
   if ($Request) {
-    if ($script:tools -contains $id) {
-      # не-агенты: пол-яркости, при обращении вспышка яркости (без полного максимума)
-      if ($a.Val -lt 0.5) { $a.Val = 0.5 }
-      else { $a.Val = [Math]::Min(1.0, $a.Val * 1.4) }
+    $floor = Get-Floor $id
+    if ($a.Val -le $floor) {
+      $a.Val = 1.0                                   # «включили»/обращение к полу: вспышка до 100%
     } else {
-      # агент/сервис: обращение = выдача 20% актуальности; выше 20% не снижаем
-      if ($a.Val -lt 0.2) { $a.Val = 0.2 }
+      $a.Val = [Math]::Min(1.0, $a.Val * 1.4)        # было активным: +40% от предыдущего значения
     }
-    $a.Busy = $true                                 # агент работает: затухание на паузе
-    $a.LastRequest = (Get-Date)
-    $a.Count = $a.Count + 1                         # число обращений (идёт под не-агентам в число)
+    $a.Busy = $true                                 # узел работает: затухание на паузе
+    $a.LastTouch = (Get-Date)
+    $a.Count = $a.Count + 1                         # число обращений
   } else {
-    $a.Busy = $false                                # агент ответил: с этого момента затухание
+    $a.Busy = $false                                # узел ответил: с этого момента затухание
     $a.LastReply = (Get-Date)
     # узел был в ошибке и ответил — инцидент закрыт (решённая ошибка)
     if ($a.Fault) { $a.Fault = $false; $a.Resolved = $a.Resolved + 1 }
   }
 }
 
-# затухание актуальности: 1% за 2 секунды (0.5%/с); пол: агенты 0%, инструменты 50%
+# затухание актуальности: 1% за 2 секунды (0.5%/с); пол — по классу узла
 function Update-Actuality {
   $now = Get-Date
   $dtSec = ($now - $script:actTick).TotalSeconds
@@ -762,15 +930,16 @@ function Update-Actuality {
   $decay = 0.005 * $dtSec
   foreach ($k in @($script:act.Keys)) {
     $a = $script:act[$k]
-    if ($a.Busy) { continue }                  # пока агент работает — значения стоят
+    if ($a.Busy) { continue }                  # пока узел работает — значения стоят
     $floor = Get-Floor $k
     $a.Val = [Math]::Max($floor, $a.Val - $decay)
   }
-  # запрошенный агент не ответил за 5 с -> сигнал оркестратору (прими решение) + фиксация ошибки
+  $timedOut = @()
+  # запрошенный узел не ответил за 5 с -> сигнал оркестратору (прими решение) + фиксация ошибки
   foreach ($k in @($script:act.Keys)) {
     $a = $script:act[$k]
-    if ($a.Busy -and $a.LastRequest) {
-      $wait = ($now - $a.LastRequest).TotalSeconds
+    if ($a.Busy -and $a.LastTouch) {
+      $wait = ($now - $a.LastTouch).TotalSeconds
       if ($wait -gt 5.0) {
         $al = $script:alarm[$k]
         if (-not $al -or (($now - $al).TotalSeconds -gt 15)) {
@@ -781,9 +950,23 @@ function Update-Actuality {
           $script:edgeLast["watchdog|$k"] = @{ Dir = 1; Last = $now }
         }
       }
+      # ТАЙМ-АУТ «ЗАНЯТ»: узел держит Busy дольше -BusyTimeoutSec без ответа —
+      # снимаем занятость, иначе «занятый» агент вечно висит на 100%
+      if ($script:BusyTimeoutSec -gt 0 -and $wait -gt $script:BusyTimeoutSec) {
+        $a.Busy = $false
+        $a.LastReply = $now
+        $timedOut += $k
+      }
     } elseif (-not $a.Busy) {
       $script:alarm[$k] = $null                # ответил/свободен — тревога снята
     }
+  }
+  # тайм-аут занят: тревогу ставим ПОСЛЕ цикла, иначе она тут же снимется
+  foreach ($k in $timedOut) {
+    $script:alarm[$k] = $now
+    Add-Snake "watchdog|oc" 1 0.0 $true
+    $script:edgeLast["watchdog|oc"] = @{ Dir = 1; Last = $now }
+    $script:edgeLast["watchdog|$k"] = @{ Dir = 1; Last = $now }
   }
 }
 
@@ -819,7 +1002,7 @@ function Request-AgentWake([string]$id) {
   if (-not $script:act.ContainsKey($id)) { $script:act[$id] = New-ActEntry }
   $script:act[$id].Val = 1.0
   $script:act[$id].Busy = $true
-  $script:act[$id].LastRequest = (Get-Date)
+  $script:act[$id].LastTouch = (Get-Date)
 }
 
 # есть ли уже идущий процесс пробуждения узла (не старше 30 с)?
@@ -828,13 +1011,18 @@ function Is-Waking([string]$id) {
   return (((Get-Date) - $script:waking[$id].Since).TotalSeconds -lt 30)
 }
 
-# обработчик "к агенту обратились": если агент выключен - включаем через вотчдог
-# (100% по протоколу wake), иначе - простой Touch (использование = 20% актуальности, busy).
+# обработчик "к агенту обратились": если агент выключен - включаем через вотчдог,
+# иначе - простой Touch (актуальность x1.4, busy).
 # ИСКЛЮЧЕНИЕ (MCP-серверы firecrawl/local-llm/MCP_DOCKER): их МОНИТОРИТ вотчдог,
 # но НЕ включает — в десктопном статусе они отключены/красные, поднимать должен
-# только оркестратор/десктоп; обращение к ним = просто Touch (20%).
+# только оркестратор/десктоп; обращение к ним = просто Touch (актуальность/счётчик).
 function Bump-OrWake([string]$id) {
   if ($id -in @('firecrawl','local-llm','MCP_DOCKER')) {
+    Touch-NodeAct $id -Request
+    return
+  }
+  # core-узлы не «просыпаются» — они всегда 100%, обращение только считаем
+  if ((Get-NodeClass $id) -eq 'core') {
     Touch-NodeAct $id -Request
     return
   }
@@ -858,19 +1046,434 @@ function Apply-EdgeAct([string]$key, [int]$dir) {
   if ($dir -eq 1) { Bump-OrWake $b } else { Touch-NodeAct $b }
 }
 
+# ========================================================================
+# 0.7.0: интенты, явное состояние, владение, персистентность, режим -Daemon
+# ========================================================================
+
+# ---------- интенты и владение ----------
+# Источники:
+#   browsertool.json - {"desired":"up|down","setBy":"...","since":"ISO"} (один узел)
+#   intents.json     - {"<id>":{"desired":"up|down|none","owner":"...","since":"ISO"}}
+# Отсутствие файла = интент auto (для demand) / auto (остальные).
+# Читаем только при изменении метки времени файла — лишних опросов не делаем.
+function Read-IntentFiles {
+  $now = Get-Date
+  foreach ($spec in @(
+      @{ Path = $WdIntentPath;    Single = $true  },
+      @{ Path = $WdGenericIntent; Single = $false }
+    )) {
+    $p = $spec.Path
+    if (-not $p -or -not (Test-Path -LiteralPath $p)) { continue }
+    $j = $null
+    try {
+      $stamp = (Get-Item -LiteralPath $p -ErrorAction Stop).LastWriteTimeUtc.Ticks
+      if ($script:intentStamp.ContainsKey($p) -and $script:intentStamp[$p] -eq $stamp) { continue }
+      $script:intentStamp[$p] = $stamp
+      $j = Get-Content -LiteralPath $p -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+    } catch { continue }
+    if ($null -eq $j) { continue }
+
+    $fresh = @{}
+    if ($spec.Single) {
+      $prop = $j.PSObject.Properties['desired']
+      if ($prop) {
+        $idProp = $j.PSObject.Properties['id']
+        $id = if ($idProp) { "$($idProp.Value)" } else { [IO.Path]::GetFileNameWithoutExtension($p) }
+        $owProp = $j.PSObject.Properties['owner']; if (-not $owProp) { $owProp = $j.PSObject.Properties['setBy'] }
+        $siProp = $j.PSObject.Properties['since']
+        $fresh[$id] = @{ Desired = "$($prop.Value)".ToLower()
+                         Owner = $(if ($owProp) { "$($owProp.Value)" } else { $null })
+                         Since = $(if ($siProp) { "$($siProp.Value)" } else { $now.ToString('o') })
+                         Source = $p }
+      }
+    } else {
+      foreach ($prop in $j.PSObject.Properties) {
+        $v = $prop.Value
+        if ($null -eq $v) { continue }
+        $dProp = $v.PSObject.Properties['desired']
+        if (-not $dProp) { continue }
+        $owProp = $v.PSObject.Properties['owner']
+        $siProp = $v.PSObject.Properties['since']
+        $fresh[$prop.Name] = @{ Desired = "$($dProp.Value)".ToLower()
+                                Owner = $(if ($owProp) { "$($owProp.Value)" } else { $null })
+                                Since = $(if ($siProp) { "$($siProp.Value)" } else { $now.ToString('o') })
+                                Source = $p }
+      }
+    }
+    # узлы, убранные из файла, интент больше не задают
+    foreach ($k in @($script:intents.Keys)) {
+      if ($script:intents[$k].Source -eq $p -and -not $fresh.ContainsKey($k)) { $script:intents.Remove($k) }
+    }
+    foreach ($k in $fresh.Keys) { $script:intents[$k] = $fresh[$k] }
+  }
+}
+
+# интент узла: auto|up|down|none (none == «не запускать»)
+function Get-NodeIntent([string]$id) {
+  if ($script:intents.ContainsKey($id)) {
+    $d = $script:intents[$id].Desired
+    if ($d) { return $d }
+  }
+  return 'auto'
+}
+
+# владелец узла: opencode|guardian|user|system
+function Get-NodeOwner([string]$id) {
+  if ($script:intents.ContainsKey($id) -and $script:intents[$id].Owner) { return $script:intents[$id].Owner }
+  if ($script:nodeOwner.ContainsKey($id)) { return $script:nodeOwner[$id] }
+  switch (Get-NodeClass $id) {
+    'demand' { return 'opencode' }
+    'agent'  { return 'opencode' }
+    default  { return 'system' }
+  }
+}
+
+# ---------- ЯВНОЕ СОСТОЯНИЕ узла ----------
+# Очки — это число. Состояние — это ПРИЧИНА, почему оно такое.
+#   active      - Val > 0.5
+#   idle        - 0 < Val <= 0.5
+#   unloaded    - Val <= 0.005 (выгружен по требованию; НЕ дефект)
+#   need-guard  - Val <= 0.005, но интент = up (кого-то надо прямо сейчас)
+#   fault       - узел реально упал (красный) и его НЕ отпускают
+# Инструмент с интентом none/down, который не запущен, = unloaded + СЕРЫЙ, не красный.
+#
+# ИНТЕНТ 'auto' (по умолчанию) трактуется ПО КЛАССУ узла (0.8.0):
+#   core/service  — «нужен всегда»: красный = fault (страж/служба упали — это факт);
+#   demand/agent  — «по требованию»: красный = unloaded (не запускали и не просим —
+#                   это НЕ поломка; решение о запуске/завершении у владельца).
+# Раньше 'auto' считался «нужным» для всех, из-за чего выключенный по требованию
+# browsertool выглядел как fault. Теперь красным становится только реальная поломка.
+function Test-NodeWanted([string]$id, [string]$intent) {
+  if ($intent -eq 'up') { return $true }
+  if ($intent -eq 'auto') {
+    $cls = Get-NodeClass $id
+    return ($cls -eq 'core' -or $cls -eq 'service')
+  }
+  return $false   # none, down, '' и всё прочее — «не просим»
+}
+
+function Get-NodeState([string]$id, [string]$status, [double]$val, [string]$intent, [string]$owner) {
+  $wanted = Test-NodeWanted $id $intent
+  # 0.8.0: сначала смотрим ФАКТ жизни узла, потом очки.
+  # Раньше «очки ещё не истекли» маскировало остановленный узел как active.
+  if ($status -eq 'red')   { if ($wanted) { return 'fault' } else { return 'unloaded' } }  # упал
+  if ($status -eq 'gray')  { if ($intent -eq 'up') { return 'need-guard' } else { return 'unloaded' } }  # не запущен, а нужен
+  # 0.8.1: узел ЖИВ (green/yellow) — решают очки. need-guard означает «нужен, но
+  # не работает», поэтому живой узел с истёкшими очками = простаивает (idle),
+  # а не «нужен». Иначе три живых MCP-сервера вечно светились бы «нужен».
+  if ($val -gt 0.5)   { return 'active' }
+  if ($val -gt 0.005) { return 'idle' }
+  return $(if ($intent -eq 'up') { 'idle' } else { 'unloaded' })   # простаивает ИЛИ выгружен по требованию
+}
+
+# цвет статуса узла с учётом интента: «не запускали и не просим» — это не поломка
+function Resolve-NodeStatusColor([string]$id, [string]$st) {
+  if ($st -ne 'red') { return $st }
+  if ((Get-NodeClass $id) -eq 'core') { return $st }   # core не маскируем: стража/демон упал — факт
+  $intent = Get-NodeIntent $id
+  if ($intent -eq 'none' -or $intent -eq 'down' -or $intent -eq 'auto') { return 'gray' }
+  return $st
+}
+
+# ---------- кандидаты на выгрузку (БЕЗ самоубийства) ----------
+# Выгружать можно ТОЛЬКО выгруженные узлы классов agent/demand, у которых интент
+# не up. Core-узлы (oc/watchdog/guardian/monitor) и службы выгрузке НЕ подлежат —
+# запрет зашит в коде, а не в настройке.
+function Test-UnloadAllowed([string]$id) {
+  if ($id -in @('oc','watchdog','guardian','monitor')) { return $false }
+  $cls = Get-NodeClass $id
+  if ($cls -eq 'core' -or $cls -eq 'service') { return $false }
+  if ((Get-NodeIntent $id) -eq 'up') { return $false }
+  return $true
+}
+
+# когда к узлу последний раз обращались (для оценки простоя)
+function Get-NodeIdleSec([string]$id) {
+  $last = $script:bootTime
+  if ($script:act.ContainsKey($id)) {
+    $a = $script:act[$id]
+    if ($a.LastReply) { $last = $a.LastReply }
+    if ($a.LastTouch -and $a.LastTouch -gt $last) { $last = $a.LastTouch }
+  }
+  return ((Get-Date) - $last).TotalSeconds
+}
+
+# pid-ы узла: из уже снятого снимка процессов, иначе восстановленные (если живы)
+function Get-NodePid([string]$id) {
+  if ($script:procs -and $script:procs.ContainsKey($id)) { return "$($script:procs[$id].Pids)" }
+  if ($script:restoredPids.ContainsKey($id)) { return "$($script:restoredPids[$id])" }
+  return ''
+}
+
+# ---------- журнал причин (кольцевой, до 500 строк) ----------
+function Write-StateEvent([string]$id, [string]$old, [string]$neu, [string]$reason) {
+  $now = Get-Date
+  # троттлинг: не чаще 1 раза в 10 с на узел
+  if ($script:evLast.ContainsKey($id) -and ($now - $script:evLast[$id]).TotalSeconds -lt 10) { return }
+  $script:evLast[$id] = $now
+  $line = '[{0}] {1}: {2} -> {3} ({4})' -f $now.ToString('yyyy-MM-dd HH:mm:ss'), $id, $old, $neu, $reason
+  try {
+    $lines = @()
+    if (Test-Path -LiteralPath $script:eventsPath) {
+      $lines = @(Get-Content -LiteralPath $script:eventsPath -ErrorAction SilentlyContinue)
+    }
+    $lines += $line
+    if ($lines.Count -gt 500) { $lines = @($lines | Select-Object -Last 500) }
+    $tmp = "$($script:eventsPath).tmp"
+    Set-Content -LiteralPath $tmp -Value $lines -Encoding utf8
+    Move-Item -LiteralPath $tmp -Destination $script:eventsPath -Force
+  } catch { }
+}
+
+# ---------- пересчёт состояний/владения раз в тик ----------
+function Update-NodeStates {
+  Read-IntentFiles
+  $script:nodeState = @{}
+  $cand = @()
+  $unloadAfter = if ($script:UnloadAfterSec -gt 0) { $script:UnloadAfterSec } else { 900 }
+  if (-not $script:st) { return }
+  foreach ($n in $script:st.Nodes) {
+    $id     = $n.Id
+    $intent = Get-NodeIntent $id
+    $owner  = Get-NodeOwner $id
+    $val    = Get-EffVal $id
+    $st     = Get-NodeState $id $n.Status $val $intent $owner
+    $cls    = Get-NodeClass $id
+    $script:nodeState[$id] = [pscustomobject]@{
+      Id = $id; Val = [Math]::Round([double]$val, 4); State = $st
+      Intent = $intent; Owner = $owner; Class = $cls
+      Wanted = (Test-NodeWanted $id $intent)
+      Status = $n.Status; Pid = (Get-NodePid $id)
+      IdleSec = [int](Get-NodeIdleSec $id)
+    }
+    # журнал причин — только на СМЕНУ состояния
+    if ($script:nodeStatePrev.ContainsKey($id)) {
+      $prev = $script:nodeStatePrev[$id]
+      if ($prev -ne $st) {
+        Write-StateEvent $id $prev $st ("val={0}%; интент={1}; {2}" -f [int]($val*100), $intent, $n.Detail)
+      }
+    }
+    # кандидат на выгрузку: unloaded + агент/инструмент по требованию + давно простаивает
+    if ($st -eq 'unloaded' -and (Test-UnloadAllowed $id) -and (Get-NodeIdleSec $id) -gt $unloadAfter) {
+      $cand += $id
+    }
+  }
+  $script:nodeStatePrev = @{}
+  foreach ($k in $script:nodeState.Keys) { $script:nodeStatePrev[$k] = $script:nodeState[$k].State }
+  $script:candidates = @($cand)
+}
+
+# ---------- персистентность ----------
+# Подпись ЗНАЧИМЫХ полей: если не изменилась — файл не трогаем вообще.
+# LastTouch/LastReply в подпись не входят (они меняются вместе с Val/Count).
+function Get-StateSignature {
+  $parts = @()
+  foreach ($id in ($script:nodeState.Keys | Sort-Object)) {
+    $ns = $script:nodeState[$id]
+    $a = $null
+    if ($script:act.ContainsKey($id)) { $a = $script:act[$id] }
+    if ($null -eq $a) { $parts += "${id}:0:0:0:0:0:0:$($ns.State):" ; continue }
+    $parts += ('{0}:{1}:{2}:{3}:{4}:{5}:{6}:{7}:{8}' -f $id,
+      [Math]::Round([double]$a.Val, 4), $a.Busy, $a.Count, $a.Err, $a.Resolved, $a.Fault,
+      $ns.State, $ns.Pid)
+  }
+  return ($parts -join '|') + '#cand=' + (@($script:candidates) -join ',')
+}
+
+function ConvertTo-IsoOrNull($v) {
+  if ($null -eq $v) { return $null }
+  try { return ([datetime]$v).ToString('o') } catch { return $null }
+}
+
+# Обратное преобразование. ConvertFrom-Json сам отдаёт [datetime] для ISO-строк,
+# поэтому строковое представление теряет смещение, а повторный Parse + ToLocalTime
+# сдвигает время второй раз. Значение без Kind считаем уже локальным.
+function ConvertTo-LocalDate($v) {
+  if ($null -eq $v) { return $null }
+  $d = $null
+  if ($v -is [datetime]) { $d = $v }
+  else {
+    try { $d = [datetime]::Parse("$v", [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind) } catch { return $null }
+  }
+  if ($d.Kind -eq 'Unspecified') { return [datetime]::SpecifyKind($d, 'Local') }
+  return $d.ToLocalTime()
+}
+
+# Запись состояния на диск: только при изменении значимых полей И не чаще
+# -FlushSec секунд; атомарно (tmp + Move-Item). Файл не держим открытым.
+function Save-NodesState {
+  if (-not $script:nodeState -or $script:nodeState.Count -eq 0) { return }
+  $sig = Get-StateSignature
+  if ($sig -eq $script:stateSig) { $script:stateDirty = $false; return }
+  $now = Get-Date
+  if ($script:FlushSec -gt 0) {
+    if (($now - $script:stateLast).TotalSeconds -lt $script:FlushSec) { $script:stateDirty = $true; return }
+  }
+  $nodesObj = [ordered]@{}
+  foreach ($id in ($script:nodeState.Keys | Sort-Object)) {
+    $ns = $script:nodeState[$id]
+    $a = $null
+    if ($script:act.ContainsKey($id)) { $a = $script:act[$id] }
+    $nodesObj[$id] = [ordered]@{
+      Val       = [Math]::Round([double]$(if ($a) { $a.Val } else { 0 }), 4)
+      Busy      = [bool]$(if ($a) { $a.Busy } else { $false })
+      LastTouch = $(if ($a) { ConvertTo-IsoOrNull $a.LastTouch } else { $null })
+      LastReply = $(if ($a) { ConvertTo-IsoOrNull $a.LastReply } else { $null })
+      Count     = [int]$(if ($a) { $a.Count } else { 0 })
+      Err       = [int]$(if ($a) { $a.Err } else { 0 })
+      Resolved  = [int]$(if ($a) { $a.Resolved } else { 0 })
+      Fault     = [bool]$(if ($a) { $a.Fault } else { $false })
+      State     = $ns.State
+      Owner     = $ns.Owner
+      Intent    = $ns.Intent
+      Class     = $ns.Class
+      Wanted    = [bool]$ns.Wanted
+      IdleSec   = $ns.IdleSec
+      Pid       = $ns.Pid
+    }
+  }
+  $doc = [ordered]@{
+    schema     = 'invr.nodes/1'
+    savedAt    = $now.ToString('o')
+    nodes      = $nodesObj
+    candidates = @($script:candidates)
+  }
+  try {
+    $dir = Split-Path $script:statePath -Parent
+    if ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    $json = $doc | ConvertTo-Json -Depth 6
+    $tmp = "$($script:statePath).tmp"
+    Set-Content -LiteralPath $tmp -Value $json -Encoding utf8 -NoNewline
+    Move-Item -LiteralPath $tmp -Destination $script:statePath -Force
+    $script:stateSig = $sig
+    $script:stateDirty = $false
+    $script:stateLast = $now
+  } catch { }
+}
+
+# Загрузка очков при старте: файл свежий (не старше -MaxAgeSec) — берём очки,
+# счётчики и ошибки; pid проверяем на живость, мёртвый сбрасываем.
+function Restore-NodesState {
+  $p = $script:statePath
+  if (-not $p -or -not (Test-Path -LiteralPath $p)) { return $false }
+  $j = $null
+  try { $j = Get-Content -LiteralPath $p -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop } catch { return $false }
+  if ($null -eq $j) { return $false }
+  if ("$($j.schema)" -ne 'invr.nodes/1') { return $false }
+  $ageOk = $false
+  try {
+    $saved = ConvertTo-LocalDate $j.savedAt
+    $age = ((Get-Date) - $saved).TotalSeconds
+    # будущая метка времени тоже считаем битой (часы спешат/разъехались зоны)
+    $ageOk = ($saved -and $age -le $script:MaxAgeSec -and $age -ge -300)
+  } catch { $ageOk = $false }
+  if (-not $ageOk) { return $false }
+  if (-not $j.nodes) { return $false }
+
+  # одной проверкой узнаём, какие pid из файла ещё живы
+  $want = @()
+  foreach ($prop in $j.nodes.PSObject.Properties) {
+    if ("$($prop.Value.Pid)") { $want += ("$($prop.Value.Pid)" -split ',') }
+  }
+  $alive = @{}
+  if ($want.Count -gt 0) {
+    foreach ($pp in @(Get-Process -Id ($want | Sort-Object -Unique) -ErrorAction SilentlyContinue)) { $alive[[int]$pp.Id] = $true }
+  }
+
+  $n = 0
+  foreach ($prop in $j.nodes.PSObject.Properties) {
+    $rec = $prop.Value
+    $id = $prop.Name
+    $e = New-ActEntry
+    try { $e.Val = [double]$rec.Val } catch { }
+    $e.Busy = [bool]$rec.Busy
+    $e.Count = [int]$rec.Count
+    $e.Err = [int]$rec.Err
+    $e.Resolved = [int]$rec.Resolved
+    $e.Fault = [bool]$rec.Fault
+    if ($rec.LastTouch) { $e.LastTouch = ConvertTo-LocalDate $rec.LastTouch }
+    if ($rec.LastReply) { $e.LastReply = ConvertTo-LocalDate $rec.LastReply }
+    # core-узлы всегда 100% — восстановленное значение не имеет силы
+    if ((Get-NodeClass $id) -eq 'core') { $e.Val = 1.0 }
+    $script:act[$id] = $e
+    # pid восстанавливаем только живой (мёртвый — сброс, как будто его не было)
+    $pv = "$($rec.Pid)"
+    if ($pv) {
+      $pids = @($pv -split ',' | Where-Object { $alive.ContainsKey([int]$_) })
+      if ($pids.Count -gt 0) { $script:restoredPids[$id] = ($pids -join ',') }
+    }
+    $n++
+  }
+  if ($n -gt 0) {
+    $script:actTick = (Get-Date)   # затухание считаем от момента старта
+    return $true
+  }
+  return $false
+}
+
+# ---------- один тик состояния (общий для -Daemon и GUI) ----------
+function Invoke-StateTick {
+  Update-Perf
+  Update-EdgeActivity
+  $script:st = Get-NodeStatus
+  Update-Actuality        # затухание очков (после свежих касаний)
+  Update-NodeStates       # явное состояние + владение + интент + кандидаты
+  Save-NodesState         # на диск — только при изменении и не чаще FlushSec
+}
+
 # ---------- текстовый статус ----------
+if ($Once -and -not $Daemon) {
+  "ключ -Once работает только вместе с -Daemon (один тик демона и выход)"
+  exit 1
+}
 if ($Status) {
+  $null = Restore-NodesState
   Update-Perf
   $st = Get-NodeStatus
+  $script:st = $st
+  Init-Actuality $st.Nodes
+  Update-NodeStates
   "Граф инфраструктуры (модель: $($st.Model)):"
+  "id            статус состояние  очки  класс    интент владелец  uptime      детали"
+  $counts = @{ active = 0; idle = 0; unloaded = 0; 'need-guard' = 0; fault = 0 }
   $st.Nodes | ForEach-Object {
+    $ns = $script:nodeState[$_.Id]
+    $state = if ($ns) { $ns.State } else { '?' }
+    $val   = if ($ns) { $ns.Val } else { 0 }
+    if ($counts.ContainsKey($state)) { $counts[$state] = $counts[$state] + 1 }
     $mark = switch ($_.Status) { 'green' { 'OK  ' } 'yellow' { 'UP  ' } 'red' { 'FAIL' } 'gray' { 'STOP' } default { ' ?  ' } }
     $perfTxt = Get-PerfText $_.Id
-    $line = "{0,-28} {1} uptime={2,-10} {3}" -f $_.Label.Split("`n")[0], $mark, $_.Uptime, $_.Detail
+    $line = "{0,-13} {1} {2,-11} {3,3}% {4,-8} {5,-6} {6,-9} {7,-10} {8}" -f `
+      $_.Id, $mark, $state, [int]($val * 100), (Get-NodeClass $_.Id), (Get-NodeIntent $_.Id), (Get-NodeOwner $_.Id), $_.Uptime, $_.Detail
     if ($perfTxt) { $line += "  |  $perfTxt" }
     $line
   }
+  ""
+  "Сводка: active=$($counts['active']) idle=$($counts['idle']) unloaded=$($counts['unloaded']) need-guard=$($counts['need-guard']) fault=$($counts['fault'])"
+  "Кандидаты на выгрузку (простой > $($script:UnloadAfterSec) с, только agent/demand): " +
+    $(if ($script:candidates.Count -gt 0) { @($script:candidates) -join ', ' } else { 'нет' })
+  "core-узлы (выгрузка запрещена): oc, watchdog, guardian, monitor"
+  "Файл состояния: $($script:statePath)"
   exit 0
+}
+
+# ---------- режим -Daemon: монитор БЕЗ окна ----------
+if ($Daemon) {
+  $null = Restore-NodesState
+  $st = Get-NodeStatus
+  Init-Actuality $st.Nodes
+  $script:st = $st
+  Update-NodeStates
+  Save-NodesState
+  if ($Once) {
+    "тик выполнен (daemon -once); состояние: $($script:statePath)"
+    exit 0
+  }
+  "демон карты запущен (тик 3 с); состояние: $($script:statePath); Ctrl+C — выход"
+  while ($true) {
+    Start-Sleep -Seconds 3
+    try { Invoke-StateTick } catch { }
+  }
 }
 
 # ---------- GDI+ рендер ----------
@@ -886,6 +1489,14 @@ function Invoke-DrawGraph($g, $nodes, [bool]$pulse) {
     yellow = [System.Drawing.Color]::FromArgb(235, 185, 40)
     red    = [System.Drawing.Color]::FromArgb(235, 60, 60)
     gray   = [System.Drawing.Color]::FromArgb(90, 96, 106)
+  }
+  # состояние -> цвет: unloaded = СЕРЫЙ (выгружен по требованию), а не красный
+  $stateCol = @{
+    'active'     = $col['green']
+    'idle'       = $col['yellow']
+    'need-guard' = $col['yellow']
+    'fault'      = $col['red']
+    'unloaded'   = [System.Drawing.Color]::FromArgb(122, 132, 148)
   }
 
   # трансформ: масштаб + центрирование виртуальной сцены в реальном окне
@@ -909,7 +1520,9 @@ function Invoke-DrawGraph($g, $nodes, [bool]$pulse) {
     # пул ИИ -> какие модели/пулы использует в каскаде
     @('lab','ollama-prov'), @('lab','cloud'),
     # openrouter — внешний роутер: канал включения по требованию оркестратора
-    @('watchdog','openrouter','ctl')
+    @('watchdog','openrouter','ctl'),
+    # страж демона -> демон; демон -> монитор карты; монитор -> оркестратор
+    @('guardian','watchdog','ctl'), @('watchdog','monitor','ctl'), @('monitor','oc','ctl')
   )
 
   $nodeMap = @{}; foreach ($n in $nodes) { $nodeMap[$n.Id] = $n }
@@ -932,9 +1545,7 @@ function Invoke-DrawGraph($g, $nodes, [bool]$pulse) {
     if (-not $cen.ContainsKey($e[0]) -or -not $cen.ContainsKey($e[1])) { $iEdge++; continue }
     $cA = $cen[$e[0]]; $cB = $cen[$e[1]]
     $nA = $nodeMap[$e[0]]; $nB = $nodeMap[$e[1]]
-    $actA = Get-ActVal $e[0]; $actB = Get-ActVal $e[1]
-    if ($e[0] -in @('oc','watchdog')) { $actA = 1.0 }
-    if ($e[1] -in @('oc','watchdog')) { $actB = 1.0 }
+    $actA = Get-EffVal $e[0]; $actB = Get-EffVal $e[1]
     # связь рабочая только если оба узла НЕ выключены (актуальность выше 0%)
     $aliveA = ($null -ne $nA) -and ($nA.Status -notin @('red','gray')) -and ($actA -gt 0.005)
     $aliveB = ($null -ne $nB) -and ($nB.Status -notin @('red','gray')) -and ($actB -gt 0.005)
@@ -1115,48 +1726,43 @@ function Get-RoundedRectPath($x, $y, $w, $h, $r) {
     $p = $pos[$n.Id]
     if (-not $p) { continue }
     $sz = Get-NodeSize $n
+    $ns = $script:nodeState[$n.Id]
+    $state = if ($ns) { $ns.State } else { '' }
+    if (-not $state) { $state = Get-NodeState $n.Id $n.Status (Get-EffVal $n.Id) (Get-NodeIntent $n.Id) (Get-NodeOwner $n.Id) }
     $c = $col[$n.Status]; if (-not $c) { $c = $col['gray'] }
+    # явное состояние важнее цвета статуса:
+    #   unloaded  — серый (выгружен по требованию), а НЕ красный;
+    #   need-guard — жёлтый (выгружен, но его ждут прямо сейчас);
+    #   fault     — красный (упал и его не отпускают).
+    if ($state -eq 'unloaded') { $c = $stateCol['unloaded'] }
+    elseif ($state -eq 'need-guard') { $c = $stateCol['need-guard'] }
     if ($n.Status -eq 'red' -and -not $pulse) { $c = [System.Drawing.Color]::FromArgb(120, 32, 32) }
 
-    # актуальность: агент без использования тускнеет, off — ТОЛЬКО при 0% (Val<=0.005)
-    $isCtl  = ($n.Id -in @('oc','watchdog'))   # оркестратор и демон-страж всегда "работают"
-    $isTool = ($script:tools -contains $n.Id)   # не-агенты (инструменты оркестратора)
-    $val  = if ($isCtl) { 1.0 } else { Get-ActVal $n.Id }
+    # очки: core всегда 100%, у остальных — по классу (пол 0.5/0.0)
+    $isCore = ((Get-NodeClass $n.Id) -eq 'core')
+    $isTool = ($script:tools -contains $n.Id)   # инструменты оркестратора (двойной контур)
+    $val  = Get-EffVal $n.Id
     $off  = ($val -le 0.005)
-    # не-агенты никогда не гаснут полностью — минимум «пол-яркости» (пол 0.5)
     $dim  = [Math]::Min(1.0, [Math]::Max(0.0, $val))      # 1.0 (яркий) -> 0 (тёмный/off)
     $dimC = [System.Drawing.Color]::FromArgb(30, 33, 40)   # цвет "выключенности"
-    $gray = [System.Drawing.Color]::FromArgb(118, 124, 134) # выключенный узел: нейтральный серый
+    $gray = [System.Drawing.Color]::FromArgb(118, 124, 134) # выгруженный узел: нейтральный серый
 
-    # метрики агента НАД прямоугольником: центрируются по ширине узла, шрифт
-    # подбирается так, чтобы текст НЕ выходил за горизонтальные границы узла
-    # (никаких заходов на кружки/метрики/узлы соседей)
+    # очки + метрики НАД прямоугольником (одна строка, тот же шрифт, что заголовок)
+    $pctTxt = '{0}%' -f [int]($val * 100)
     $perfTxt = if ($off) { $null } else { Get-PerfText $n.Id }
-    $perfH = 0.0
-    $perfFont = $fMeta
-    if ($perfTxt) {
-      $pSize = $script:fTitle.Size
-      $psz = $script:mG.MeasureString($perfTxt, $perfFont)
-      while ($psz.Width -gt ($sz.W - 10) -and $pSize -gt 7.0) {
-        $pSize = $pSize - 0.5
-        $perfFont.Dispose()
-        $perfFont = [System.Drawing.Font]::new('Segoe UI', $pSize)
-        $psz = $script:mG.MeasureString($perfTxt, $perfFont)
-      }
-      $perfY = [Math]::Max(0.0, ($p.Y - $psz.Height - 3))
-      $g.DrawString($perfTxt, $perfFont, $metaBrush, ($p.X + ($sz.W - $psz.Width)/2), $perfY)
-      $perfH = $psz.Height + 3
-      if ($perfFont -ne $fMeta) { $perfFont.Dispose() }
-    }
+    $topTxt = if ($perfTxt) { "$pctTxt  $perfTxt" } else { $pctTxt }
+    $topCol = if ($off) { $gray } else { [System.Drawing.Color]::FromArgb(120, 200, 170) }
+    $psz = $script:mG.MeasureString($topTxt, $fMeta)
+    $g.DrawString($topTxt, $fMeta, [System.Drawing.SolidBrush]::new($topCol),
+      ($p.X + ($sz.W - $psz.Width)/2), [Math]::Max(0.0, ($p.Y - $psz.Height - 3)))
 
-    # кружок-счётчик ОШИБОК: "нерешённые/решённые" (решённые — зелёным через слэш).
-    # Привязан к правому верхнему углу узла В ПРЕДЕЛАХ ширины и размещён СТРОГО ВЫШЕ
-    # метрик (отдельная зона) — не заходит ни на метрики, ни на соседние узлы/тексты.
+    # кружок-счётчик ОШИБОК над правым верхним углом узла: "нерешённые/решённые"
+    # (решённые — зелёным через слэш). Показывается, если были инциденты.
     if ($script:act.ContainsKey($n.Id)) {
       $en = $script:act[$n.Id]
       if (($en.Err -gt 0) -or ($en.Resolved -gt 0)) {
         $bCx = $p.X + $sz.W - 14
-        $bCy = $p.Y - $perfH - 16
+        $bCy = $p.Y - 4
         $bR  = 12.0
         $bErrCol = if ($en.Err -gt 0) { [System.Drawing.Color]::FromArgb(235, 90, 90) } else { [System.Drawing.Color]::FromArgb(120, 130, 140) }
         $bP = Get-RoundedRectPath ($bCx - $bR) ($bCy - $bR/2) (2*$bR) ($bR + 2) 8
@@ -1234,20 +1840,30 @@ function Get-RoundedRectPath($x, $y, $w, $h, $r) {
     $g.DrawString($lines[0], $script:fTitle, [System.Drawing.SolidBrush]::new($fgC), $ttx, $tty)
     if ($lines.Count -gt 1) { $g.DrawString($lines[1], $script:fSub, [System.Drawing.SolidBrush]::new($dC), $ttx, $tty + [Math]::Ceiling($script:fTitle.Height)) }
     if ($lines.Count -gt 2) { $g.DrawString($lines[2], $script:fSub, [System.Drawing.SolidBrush]::new($dC), $ttx, $tty + 2*[Math]::Ceiling($script:fTitle.Height)) }
-    # статус on/off ПЕРЕД прямоугольником (слева от узла)
-    $stCol = if ($off) { $gray } else { [System.Drawing.Color]::FromArgb(120, 200, 150) }
+    # явное состояние ПЕРЕД прямоугольником (слева от узла) — вместо прежних on/off
+    $stCol = if ($state -eq 'unloaded') { $gray }
+             elseif ($state -eq 'need-guard') { [System.Drawing.Color]::FromArgb(235, 185, 40) }
+             elseif ($state -eq 'fault') { $col['red'] }
+             else { [System.Drawing.Color]::FromArgb(120, 200, 150) }
     $stBrush = [System.Drawing.SolidBrush]::new($stCol)
-    $stTxt = if ($off) { 'off' } else { 'on' }
+    $stTxt = switch ($state) {
+      'active'     { 'on' }
+      'idle'       { 'idle' }
+      'unloaded'   { 'off' }
+      'need-guard' { 'need' }
+      'fault'      { 'fail' }
+      default      { '' }
+    }
     $stSz = $script:mG.MeasureString($stTxt, $script:fUp)
     $g.DrawString($stTxt, $script:fUp, $stBrush, ($p.X - $stSz.Width - 4), ($p.Y + $sz.H/2 - $stSz.Height/2))
     $stBrush.Dispose()
-    # ПОД прямоугольником: агенты/сервисы — актуальность (%), НЕ-агенты — число обращений
+    # ПОД прямоугольником: инструменты оркестратора — число обращений, остальные — очки
     if ($isTool) {
       $cnt = if ($script:act.ContainsKey($n.Id)) { $script:act[$n.Id].Count } else { 0 }
       $actTxt = '{0}' -f $cnt
       $actCol = [System.Drawing.Color]::FromArgb(205, 175, 110)   # янтарный: число обращений
     } else {
-      $actTxt = if ($isCtl) { '100%' } else { '{0}%' -f [int]($val * 100) }
+      $actTxt = '{0}%' -f [int]($val * 100)
       $actCol = if ($off) { $gray } else { $dC }
     }
     $actSz  = $script:mG.MeasureString($actTxt, $script:fUp)
@@ -1269,10 +1885,13 @@ function Get-RoundedRectPath($x, $y, $w, $h, $r) {
 
 # ---------- offline render: -Shot ----------
 if ($Shot) {
+  $null = Restore-NodesState
   Update-Perf
   Update-EdgeActivity
   $st = Get-NodeStatus
+  $script:st = $st
   Init-Actuality $st.Nodes
+  Update-NodeStates          # состояния нужны для цвета/подписи узлов на PNG
   $bmp = [System.Drawing.Bitmap]::new(1000, 620)
   $g = [System.Drawing.Graphics]::FromImage($bmp)
   $g.Clear([System.Drawing.Color]::FromArgb(18, 20, 26))
@@ -1280,52 +1899,31 @@ if ($Shot) {
   $g.Dispose()
   $bmp.Save($Shot, [System.Drawing.Imaging.ImageFormat]::Png)
   $bmp.Dispose()
-  Write-Output "saved: $Shot"
+  Write-Output "снимок сохранён: $Shot"
   exit 0
 }
 
 # ---------- GUI ----------
 # Необработанные ошибки в обработчиках WinForms всплывают как JIT-диалог —
-# перехватываем на уровне потока и пишем в лог рядом со скриптом.
-$ErrLog = Join-Path $PSScriptRoot 'infra-graph.err.log'
+# перехватываем на уровне потока и пишем в лог состояния (вне каталога версии).
+$ErrLog = $script:ErrLogPath
+try {
+  $errDir = Split-Path $ErrLog -Parent
+  if (-not (Test-Path -LiteralPath $errDir)) { New-Item -ItemType Directory -Path $errDir -Force | Out-Null }
+} catch { }
 [System.Windows.Forms.Application]::SetUnhandledExceptionMode([System.Windows.Forms.UnhandledExceptionMode]::CatchException)
 [System.Windows.Forms.Application]::add_ThreadException({
   param($s, $e)
   try { "[$([DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))] $($e.Exception)" | Add-Content -LiteralPath $ErrLog -Encoding utf8 } catch {}
 })
-
-# ---------- один граф — одно окно: освобождаем консоль pwsh ----------
-# Канонический запуск (`Start-Process pwsh -STA ... [Console]::Title='infra-graph'`)
-# порождает ОТДЕЛЬНУЮ консоль (окно pwsh + conhost) — это и есть «первое окно».
-# Не прячем её (скрытое окно всё равно висит в памяти), а ПОЛНОСТЬЮ
-# отсоединяемся от консоли (FreeConsole): окно и буфер консоли закрываются,
-# остаётся только процесс карты. Терминал пользователя (UserInteractive, свой
-# заголовок) не трогаем — там консоль нужна.
-Add-Type -TypeDefinition @'
-using System;
-using System.Runtime.InteropServices;
-public static class InfraGraphWin {
-  [DllImport("kernel32.dll", SetLastError = true)] public static extern IntPtr FreeConsole();
-  [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow();
-}
-'@
-$script:consoleFreed = $false
-if (-not $Status -and -not $Shot -and -not $KeepConsole) {
-  try {
-    $ownConsole = ($null -ne [Console]::Title -and [Console]::Title -eq 'infra-graph')
-    if (-not $ownConsole) { $ownConsole = (-not [Environment]::UserInteractive) }
-    if ($ownConsole) {
-      $hwnd = [InfraGraphWin]::GetConsoleWindow()
-      if ($hwnd -ne [IntPtr]::Zero) {
-        [InfraGraphWin]::FreeConsole() | Out-Null
-        $script:consoleFreed = $true
-      }
-    }
-  } catch {}
-}
+# очки переживают перезапуск GUI: сначала восстанавливаем, потом опрашиваем
+$null = Restore-NodesState
+Update-Perf
 $st = Get-NodeStatus
 Init-Actuality $st.Nodes
 $script:st = $st
+Update-NodeStates
+Save-NodesState
 
 # ---------- один граф — одно окно ----------
 # При старте GUI закрываем любой работающий экземпляр карты (старое окно могло
@@ -1470,8 +2068,10 @@ $panel.Add_Paint({
   }
   # легенда поверх
   $legFont = [System.Drawing.Font]::new('Segoe UI', 8.5)
-  $items = @('работает','запущен','завис / ошибка','остановлен')
-  $cols  = @([System.Drawing.Color]::FromArgb(0,200,90), [System.Drawing.Color]::FromArgb(235,185,40), [System.Drawing.Color]::FromArgb(235,60,60), [System.Drawing.Color]::FromArgb(90,96,106))
+  $items = @('работает','запущен','завис / ошибка','остановлен','выгружен по требованию')
+  $cols  = @([System.Drawing.Color]::FromArgb(0,200,90), [System.Drawing.Color]::FromArgb(235,185,40),
+             [System.Drawing.Color]::FromArgb(235,60,60), [System.Drawing.Color]::FromArgb(90,96,106),
+             [System.Drawing.Color]::FromArgb(122,132,148))
   $x = 14; $y = $panel.Height - 26
   for ($i=0; $i -lt $items.Count; $i++) {
     $g.FillEllipse([System.Drawing.SolidBrush]::new($cols[$i]), $x, $y-6, 10, 10)
@@ -1480,6 +2080,11 @@ $panel.Add_Paint({
     $legBrush.Dispose()
     $x += 30 + ($items[$i].Length * 7.4)
   }
+  # счётчики: кандидаты на выгрузку + тревоги — в углу, чтобы видеть «кого можно снять»
+  $candTxt = "кандидаты на выгрузку: " + $(if ($script:candidates.Count -gt 0) { @($script:candidates) -join ', ' } else { 'нет' })
+  $cb = [System.Drawing.SolidBrush]::new([System.Drawing.Color]::FromArgb(205, 175, 110))
+  $g.DrawString($candTxt, $legFont, $cb, ($panel.Width - $g.MeasureString($candTxt, $legFont).Width - 14), 10)
+  $cb.Dispose()
   $legFont.Dispose()
 })
 
@@ -1491,12 +2096,16 @@ $timer.Add_Tick({
   Update-EdgeActivity
   $script:st    = Get-NodeStatus
   Update-Actuality       # затухание актуальности узлов (после свежих касаний)
+  Update-NodeStates      # явное состояние + владение + интент + кандидаты
+  Save-NodesState        # очки на диск (только при изменении, не чаще FlushSec)
   $script:pulse = (-not $script:pulse)
   $changed = $false
   if ($script:st) {
     foreach ($n in $script:st.Nodes) {
       if ($prev[$n.Id] -ne $n.Status) { $changed = $true; break }
       if ($n.Status -eq 'red') { $changed = $true; break }
+      $ns = $script:nodeState[$n.Id]
+      if ($ns -and $ns.State -eq 'need-guard') { $changed = $true; break }
     }
   }
   if ($changed -or -not $prev.Count) { $panel.Invalidate() }

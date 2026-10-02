@@ -21,6 +21,19 @@ node_modules/
 /mcp-watchdog/
 /state/
 
+# Каталоги версий в registry/ должны оставаться чистыми: инструменты при
+# запуске без -RuntimeDir пишут state/, logs/, requests/, *.pid рядом с
+# собой, и эти машинные файлы не должны попадать в публикуемый репозиторий.
+registry/**/state/
+registry/**/logs/
+registry/**/requests/
+registry/**/*.pid
+
+# Рабочие каталоги монитора и хранителя в корне (см. также /state/ выше).
+/monitor/state/
+/monitor/logs/
+/mcp-watchdog-guardian/state/
+
 # Локальные пользовательские настройки (приватные): создаются рядом,
 # в публичный репозиторий не попадают. Значения по умолчанию — в коде.
 /config.local.json

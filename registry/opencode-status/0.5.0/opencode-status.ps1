@@ -9,6 +9,14 @@
     -Watch [N]               живое обновление каждые N секунд (по умолчанию 3)
     -Json                    машинный вывод (один объект JSON)
     -NoColor                 без ANSI-цветов (plain)
+
+  Переменные окружения (читаются из процесса, затем из уровня User):
+    INVR_LAB_DIR         каталог пула Lab100; узел 'lab'.
+                        Не задан или каталога нет - статус 'warn', деталь 'не задан'/'не найден'.
+    INVR_ROLLBACK_ROOT  каталог каталога откатов; узел 'rollback'.
+                        Не задан или каталога нет - статус 'warn', деталь 'не задан'/'не найден'.
+
+  Пути к каталогам не зашиты - инструмент переносим между машинами.
   Требует pwsh (PowerShell 7) - не Windows PowerShell 5.1.
 #>
 [CmdletBinding()]
@@ -35,6 +43,23 @@ $LogPath = Join-Path $env:USERPROFILE '.local\share\opencode\log\opencode.log'
 # Каталог инструментов (уровнем выше registry\): состояние демона рядом с шимами
 $toolsRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
 $WdPath  = Join-Path $toolsRoot 'mcp-watchdog\state\current.json'
+
+# путь из переменной окружения: процесс -> уровень User, с Trim
+function Get-EnvDir([string]$Name) {
+  $v = [Environment]::GetEnvironmentVariable($Name, 'Process')
+  if ([string]::IsNullOrWhiteSpace($v)) { $v = [Environment]::GetEnvironmentVariable($Name, 'User') }
+  if ($null -eq $v) { return '' }
+  $v.Trim()
+}
+
+# узел-каталог: 'ok' только если задан И существует, иначе 'warn' + честная деталь
+function Get-DirRow($Group, $Id, $Label, $EnvName) {
+  $dir = Get-EnvDir $EnvName
+  if (-not $dir)              { $st = 'warn'; $det = 'не задан: ' + $EnvName }
+  elseif (-not (Test-Path $dir)) { $st = 'warn'; $det = "не найден: $dir" }
+  else                        { $st = 'ok';   $det = $dir }
+  [pscustomobject]@{ Group=$Group; Id=$Id; Label=$Label; Status=$st; Uptime=''; Detail=$det }
+}
 
 # ---------- сбор статусов ----------
 function Get-Status {
@@ -97,13 +122,8 @@ function Get-Status {
     $dockerSt = if ($Matches[1] -eq 'True') { 'ok' } else { 'warn' }
   }
   $rows += [pscustomobject]@{ Group='инфраструктура'; Id='docker';  Label='Docker Desktop';       Status=$dockerSt; Uptime=''; Detail='daemon: см. MCP_DOCKER' }
-  # Каталоги лаборатории и откатов — из окружения (процесс, затем User).
-  $labDirEnv = if ($env:INVR_LAB_DIR) { $env:INVR_LAB_DIR } else { [Environment]::GetEnvironmentVariable('INVR_LAB_DIR', 'User') }
-  $rbDirEnv  = if ($env:INVR_ROLLBACK_ROOT) { $env:INVR_ROLLBACK_ROOT } else { [Environment]::GetEnvironmentVariable('INVR_ROLLBACK_ROOT', 'User') }
-  $labSt = if ($labDirEnv -and (Test-Path -LiteralPath $labDirEnv)) { 'ok' } else { 'warn' }
-  $rbSt  = if ($rbDirEnv -and (Test-Path -LiteralPath $rbDirEnv)) { 'ok' } else { 'warn' }
-  $rows += [pscustomobject]@{ Group='инфраструктура'; Id='lab';     Label='Lab100 (пул ИИ)';       Status=$labSt;    Uptime=''; Detail=$(if($labDirEnv){$labDirEnv}else{'не задан: INVR_LAB_DIR'}) }
-  $rows += [pscustomobject]@{ Group='инфраструктура'; Id='rollback';Label='каталог отката';        Status=$rbSt;     Uptime=''; Detail=$(if($rbDirEnv){$rbDirEnv}else{'не задан: INVR_ROLLBACK_ROOT'}) }
+  $rows += Get-DirRow 'инфраструктура' 'lab'      'Lab100 (пул ИИ)'    'INVR_LAB_DIR'
+  $rows += Get-DirRow 'инфраструктура' 'rollback' 'каталог отката'     'INVR_ROLLBACK_ROOT'
   $rows += [pscustomobject]@{ Group='инфраструктура'; Id='gh';      Label='GitHub (Lab-100/*)';    Status='ok';      Uptime=''; Detail='приватные репо' }
 
   return [pscustomobject]@{

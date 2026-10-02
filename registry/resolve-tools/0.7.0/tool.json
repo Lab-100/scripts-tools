@@ -1,0 +1,31 @@
+{
+  "schema": "invr.tool/1",
+  "name": "resolve-tools",
+  "version": "0.7.0",
+  "description": "Локер версий инструментов: junction-ссылки на registry\\<tool>\\<version> и переносимые шимы (реестр и INVR_TOOLS_ROOT ищутся от расположения шима)",
+  "entry": "resolve-tools.ps1",
+  "type": "script",
+  "requires": {
+    "pwsh": ">=7.0"
+  },
+  "dependencies": [],
+  "interfaces": {
+    "cli": {
+      "invoke": "pwsh -File {entry}",
+      "commands": [
+        "init",
+        "status",
+        "link",
+        "update",
+        "purge",
+        "shims"
+      ]
+    }
+  },
+  "compat": {
+    "breaks": [
+      "0.1.0"
+    ]
+  },
+  "published": "2026-09-27"
+}

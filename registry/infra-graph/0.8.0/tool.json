@@ -1,0 +1,52 @@
+{
+  "schema": "invr.tool/1",
+  "name": "infra-graph",
+  "version": "0.8.0",
+  "description": "GUI-карта инфраструктуры оркестратора: сессии opencode, провайдеры моделей, MCP-серверы, сервисы (ollama/docker/browsertool), демон-страж и страж демона, монитор состояния, пул Lab100, каталог отката, GitHub. Модель 0.8.0 — очки у ВСЕХ действующих лиц плюс явное состояние, владение и персистентность. КЛАССЫ УЗЛОВ (задают пол очков и допустимость выгрузки): core (oc, watchdog, guardian, monitor) — пол 1.0, никогда не гаснут и никогда не выгружаются, запрет выгрузки зашит в коде; agent (openrouter, gordon, invr) — пол 0.0, гаснут, 0% = unloaded, подъём через вотчдог (Request-AgentWake); demand (browsertool, firecrawl, local-llm, MCP_DOCKER, doc-extract, backup-util, resolve-tools, gordon-setup, browser) — пол 0.0, 0% означает unloaded (выгружен по требованию, НЕ поломка), есть интент up/down/none и владелец opencode/guardian/user/system; service (ollama, ollama-prov, docker, lab, rollback, gh, cloud) — пол 0.5, не гаснут. ЯВНОЕ СОСТОЯНИЕ узла (очки — число, состояние — причина): active, idle, unloaded, need-guard (Val<=0.005 при интенте up), fault (упал и его не отпускают). КЛЮЧЕВОЕ ПРАВИЛО: инструмент с интентом none/down, который не запущен, даёт unloaded и серый цвет, а НЕ красный — вотчдог больше не считает выключенный по требованию инструмент поломкой. ИНТЕНТ auto (по умолчанию) трактуется ПО КЛАССУ: core/service = «нужен всегда» (упал → fault), demand/agent = «по требованию» (не запущен → unloaded, НЕ поломка); 0.8.0 также сначала смотрит ФАКТ жизни узла (статус), и только потом очки, поэтому остановленный узел больше не выглядит active, пока «истекают» его очки. ИНТЕНТЫ читаются из mcp-watchdog/state/browsertool.json ({\"desired\":\"up|down\"}) и общего mcp-watchdog/state/intents.json ({\"<id>\":{\"desired\":\"up|down/none\",\"owner\":\"...\",\"since\":\"ISO\"}}), путь переопределяется -IntentsFile. ПЕРСИСТЕНТНОСТЬ: очки переживают перезапуск через state/nodes.json (схема invr.nodes/1, атомарная запись tmp+Move-Item, файл НЕ держится открытым, запись только при изменении значимых полей и не чаще -FlushSec, в простое файл не трогается вообще; при загрузке сверяется свежесть по -MaxAgeSec и живость Pid). Кандидаты на выгрузку публикуются в nodes.json (candidates) — только выгруженные узлы классов agent/demand с простоем больше -UnloadAfterSec, core выгружать запрещено. Журнал причин переходов состояний — events.log (кольцевой, до 500 строк, троттлинг 10 с на узел). Тайм-аут занятости -BusyTimeoutSec снимает вечно «занятый» узел. Новый режим -Daemon: монитор состояния без окна (тик 3 с), -Daemon -Once — один тик и выход.",
+  "entry": "infra-graph.ps1",
+  "type": "script",
+  "requires": {
+    "pwsh": ">=7.0"
+  },
+  "dependencies": [
+    "mcp-watchdog"
+  ],
+  "interfaces": {
+    "cli": {
+      "invoke": "pwsh -STA -File {entry}",
+      "commands": [
+        "gui",
+        "Headless",
+        "Daemon",
+        "Daemon -Once",
+        "Status",
+        "Shot <png>",
+        "Daemon -StateFile <путь> -FlushSec <сек> -MaxAgeSec <сек> -BusyTimeoutSec <сек> -UnloadAfterSec <сек>",
+        "Status -IntentsFile <путь>"
+      ],
+      "params": {
+        "Status": "разовый текстовый статус: id, статус, состояние, очки%, класс, интент, владелец, uptime, детали + сводка по состояниям и список кандидатов на выгрузку",
+        "Shot": "отрисовать граф в PNG (offline-рендер, вызывается из opencode)",
+        "Daemon": "монитор БЕЗ окна: тик 3 с, состояние + персистентность; -Once — один тик и выход",
+        "StateFile": "путь к файлу состояния (по умолчанию <tools>\\monitor\\state\\nodes.json)",
+        "IntentsFile": "переопределить путь к файлу интентов (иначе browsertool.json + intents.json в state демона-стража)",
+        "FlushSec": "минимальный интервал записи nodes.json при изменениях (по умолчанию 60; 0 = писать при любом изменении)",
+        "MaxAgeSec": "максимальный возраст nodes.json для восстановления очков при старте (по умолчанию 1800)",
+        "BusyTimeoutSec": "тайм-аут «занят»: снять Busy, если ответа нет дольше этого времени (по умолчанию 600)",
+        "UnloadAfterSec": "простой unloaded-узла класса agent/demand, после которого он попадает в кандидаты на выгрузку (по умолчанию 900)"
+      }
+    },
+    "state": {
+      "nodes": "<tools>\\monitor\\state\\nodes.json (схема invr.nodes/1; узлы: Val, Busy, LastTouch, LastReply, Count, Err, Resolved, Fault, State, Owner, Intent, Class, Wanted, IdleSec, Pid; раздел candidates)",
+      "events": "<tools>\\monitor\\state\\events.log (кольцевой журнал причин переходов состояний, до 500 строк)"
+    }
+  },
+  "compat": {
+    "breaks": [
+      "0.7.0: узлы guardian и monitor добавлены в граф (раскладка пересчитается, старый infra-graph.positions.json в каталоге версии читается, но больше не пишется)",
+      "0.7.0: -Status печатает новый формат (id, состояние, очки, класс, интент, владелец) и сводку — разбор прежних строк по позициям не работает",
+      "0.8.0: уточнена трактовка интента auto по классу узла и приоритет факта жизни над очками в Get-NodeState — состояния browsertool/прочих demand-узлов при остановленном процессе меняются с fault/active на unloaded"
+    ]
+  },
+  "published": "2026-09-27"
+}

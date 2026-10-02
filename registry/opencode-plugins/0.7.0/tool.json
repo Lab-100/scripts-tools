@@ -1,0 +1,32 @@
+{
+  "schema": "invr.tool/1",
+  "name": "opencode-plugins",
+  "version": "0.7.0",
+  "description": "Плагины opencode: принудительный русский язык, запрет кракозябр, авто-UTF8 в консоли, статус-баннер инфраструктуры. Версия 0.7.0: баннер читает ЯВНОЕ СОСТОЯНИЕ узла (state) из current.json демона — «выгружен по требованию» показывается как «выгружен», а не как поломка; добавлены узлы guardian и monitor, зеркало монитора и очередь кандидатов на выгрузку. Установщик раскладывает *.js в .opencode\\plugins и генерирует cmd-шимы мониторов и opencode-restart.cmd (перезапуск opencode двойным кликом)",
+  "entry": "opencode-plugins-install.ps1",
+  "type": "script",
+  "requires": {
+    "pwsh": ">=7.0"
+  },
+  "dependencies": [
+    "infra-graph",
+    "opencode-status",
+    "opencode-monitor"
+  ],
+  "interfaces": {
+    "cli": {
+      "invoke": "pwsh -File {entry}",
+      "commands": [
+        "install",
+        "CheckOnly",
+        "DryRun"
+      ]
+    }
+  },
+  "compat": {
+    "breaks": [
+      "0.7.0: формат строки статусов в баннере изменён — вместо [ok browsertool] печатается человеческое состояние ([выгружен browsertool:none]); прежний разбор строк по подстроке «ok <узел>» не работает"
+    ]
+  },
+  "published": "2026-09-26"
+}

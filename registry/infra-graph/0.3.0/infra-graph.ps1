@@ -24,6 +24,41 @@ $regRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $toolsRoot = Split-Path $regRoot -Parent
 $WdPath  = Join-Path $toolsRoot 'mcp-watchdog\state\current.json'
 
+# ---------- переносимые пути ----------
+# МАШИННЫХ ПУТЕЙ В КОДЕ НЕТ: внешний каталог задаётся переменной окружения
+# (сначала процесс, затем User), а при её отсутствии вычисляется ОТ
+# РАСПОЛОЖЕНИЯ - рядом с корнем инструментов, затем в текущем каталоге.
+function Get-EnvValue([string]$name) {
+  $v = [Environment]::GetEnvironmentVariable($name, 'Process')
+  if (-not $v) { $v = [Environment]::GetEnvironmentVariable($name, 'User') }
+  if ($v) { return "$v".Trim() }
+  return $null
+}
+function Resolve-EnvPath([string]$name, [string[]]$fallbacks) {
+  $v = Get-EnvValue $name
+  if ($v) { return $v }
+  foreach ($fb in $fallbacks) {
+    if ($fb -and "$fb".Trim()) { return "$fb".Trim() }
+  }
+  return $null
+}
+$cwdPath = try { (Get-Location).ProviderPath } catch { $null }
+# пул Lab100 (узел lab, размер на диске)
+$LabDir = Resolve-EnvPath 'INVR_LAB_DIR' @(
+  (Join-Path $toolsRoot 'Lab100'),
+  $(if ($cwdPath) { Join-Path $cwdPath 'Lab100' } else { $null })
+)
+# каталог откатов (узел rollback)
+$RollbackRoot = Resolve-EnvPath 'INVR_ROLLBACK_ROOT' @(
+  (Join-Path $toolsRoot 'rollback-catalog'),
+  $(if ($cwdPath) { Join-Path $cwdPath 'rollback-catalog' } else { $null })
+)
+# каталог моделей ollama (только размер на диске; пусто = узел без метрики dsk)
+$OllamaModelsDir = Resolve-EnvPath 'INVR_OLLAMA_MODELS_DIR' @(
+  (Join-Path $toolsRoot 'OllamaModels'),
+  $(if ($cwdPath) { Join-Path $cwdPath 'OllamaModels' } else { $null })
+)
+
 # ---------- сбор статусов ----------
 function Get-NodeStatus {
   $wd = $null
@@ -124,12 +159,18 @@ function Get-NodeStatus {
   $nodes += New-Node 'watchdog' "mcp-watchdog`nдемон-страж" $wdStatus $wdUp $wdDet
 
   # 6. пул Lab100
-  $labDet = 'C:\Scripts\Lab100'
+  $labDet = if ($LabDir) { $LabDir } else { 'не задан (INVR_LAB_DIR)' }
   $poolSt = 'yellow'
   $nodes += New-Node 'lab' "Lab100`nпул ИИ-агентов" $poolSt '' $labDet
 
   # 7. хранилище / git
-  $nodes += New-Node 'rollback' "каталог отката`nE:\rollback-catalog" 'green' '' 'приватный репо'
+  if ($RollbackRoot -and (Test-Path -LiteralPath $RollbackRoot)) {
+    $nodes += New-Node 'rollback' "каталог отката`n$RollbackRoot" 'green' '' 'приватный репо'
+  } elseif ($RollbackRoot) {
+    $nodes += New-Node 'rollback' "каталог отката`n$RollbackRoot" 'gray' '' 'каталог не найден'
+  } else {
+    $nodes += New-Node 'rollback' "каталог отката`n(не настроен)" 'gray' '' 'задайте INVR_ROLLBACK_ROOT'
+  }
   $nodes += New-Node 'gh' "GitHub`nLab-100/*" 'green' '' 'приватные репо'
 
   return @{ Nodes = $nodes; Opencode = $oc; Model = $model }
@@ -199,13 +240,17 @@ function Update-Perf {
   # раз в 5 минут и при первом запуске пересчитываем размеры на диске (до построения perf)
   if (($now - $script:perfLast).TotalMinutes -gt 5 -or $script:diskSizes.Count -eq 0) {
     $script:diskSizes = @{}
-    $script:diskSizes['ollama'] = Get-DirSize 'E:\OllamaModels'
+    $script:diskSizes['ollama'] = if ($OllamaModelsDir -and (Test-Path -LiteralPath $OllamaModelsDir)) { Get-DirSize $OllamaModelsDir } else { 0 }
     $dockerVhdx = $null
-    foreach ($cand in @((Join-Path $env:LOCALAPPDATA 'Docker\wsl\data\ext4.vhdx'), 'E:\Libraries\DockerDesktopWSL\main\ext4.vhdx', 'D:\Libraries\DockerDesktopWSL\main\ext4.vhdx')) {
+    $wslCands = @()
+    if ($env:LOCALAPPDATA) { $wslCands += (Join-Path $env:LOCALAPPDATA 'Docker\wsl\data\ext4.vhdx') }
+    foreach ($extra in @((Get-EnvValue 'DOCKER_WSL_DATA_DIRS') -split ';' | Where-Object { $_ })) { $wslCands += $extra.Trim() }
+    foreach ($cand in $wslCands) {
+      if (-not $cand) { continue }
       if (Test-Path -LiteralPath $cand) { $dockerVhdx = $cand; break }
     }
     $script:diskSizes['docker'] = if ($dockerVhdx) { Get-DirSize $dockerVhdx } else { 0 }
-    $script:diskSizes['lab']    = Get-DirSize 'C:\Scripts\Lab100'
+    $script:diskSizes['lab']    = if ($LabDir -and (Test-Path -LiteralPath $LabDir)) { Get-DirSize $LabDir } else { 0 }
     $script:perfLast = $now
   }
   $cores = [Math]::Max(1, [Environment]::ProcessorCount)

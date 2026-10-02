@@ -1,0 +1,48 @@
+{
+  "schema": "invr.tool/1",
+  "name": "mcp-watchdog-guardian",
+  "version": "0.2.3",
+  "description": "Хранитель демона-стража mcp-watchdog И монитора состояния infra-graph: автозапуск при входе в Windows (HKCU Run), подъём демона и монитора при каждом появлении/перезапуске opencode (пид-файл + процесс + cmdline + свежесть current.json / nodes.json), троттлинг повторных попыток, зеркало nodes.json в свой каталог состояния и компактная сводка (узлы, состояния, кандидаты на выгрузку) в state\\current.json раз в -MirrorSec. Монитор, запущенный хранителем, завершается при закрытии opencode (без сессии очки незачем). ПОЛИТИКА: хранитель НИЧЕГО не выгружает по очкам — решение о завершении принимает владелец узла; ядро (oc/watchdog/guardian/monitor) защищено от выгрузки.",
+  "entry": "mcp-watchdog-guardian.ps1",
+  "type": "service",
+  "requires": {
+    "pwsh": ">=7.0"
+  },
+  "dependencies": [
+    "mcp-watchdog",
+    "infra-graph"
+  ],
+  "runtime": {
+    "stateDir": "<tools-root>/mcp-watchdog-guardian/state",
+    "logFile": "<logs-root>/mcp-watchdog-guardian.log",
+    "launch": "Start-Process pwsh -ArgumentList '-NoProfile','-File','<tools-root>\\mcp-watchdog-guardian.ps1','-RuntimeDir','<tools-root>\\mcp-watchdog-guardian' -WindowStyle Hidden",
+    "autostart": {
+      "type": "HKCU Run",
+      "valueName": "McpWatchdogGuardian",
+      "command": "cmd.exe /c \"<tools-root>\\mcp-watchdog-guardian.cmd\""
+    }
+  },
+  "runtimeNote": "Пути размещения задаются на целевой машине. <tools-root> = каталог с плоскими шимами инструментов (tools), <logs-root> = каталог журналов (переменная INVR_LOG_DIR). Конкретные пути машины владельца намеренно не публикуются.",
+  "interfaces": {
+    "cli": {
+      "invoke": "pwsh -File {entry} -RuntimeDir <каталог состояния> [-Once]",
+      "commands": [
+        "daemon (по умолчанию)",
+        "Once",
+        "-MonitorStaleSec <сек>",
+        "-MirrorSec <сек>",
+        "-StaleSec <сек>",
+        "-StartThrottleSec <сек>",
+        "-MonitorGraceSec <сек> (допуск «процесс только что стартовал», по умолчанию 90)"
+      ]
+    }
+  },
+  "compat": {
+    "breaks": [
+      "0.2.1: без процесса монитор считается живым только пока nodes.json моложе -MonitorGraceSec (90 с) вместо -MonitorStaleSec (300 с) — падение монитора теперь восстанавливается за ~90 с, а не за 5 минут",
+      "0.2.2: -StaleSec по умолчанию 120с → 420с: демон внутри цикла может ~3 мин лечить Docker Desktop и не писать current.json — при 120с guardian успевал поднять второй экземпляр демона",
+      "0.2.3: зеркало корректно читает candidates монитора, если это список id-строк (раньше в журнал падало «=% []»)"
+    ]
+  },
+  "published": "2026-09-27"
+}

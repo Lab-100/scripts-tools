@@ -1,0 +1,29 @@
+{
+  "schema": "invr.tool/1",
+  "name": "opencode-status",
+  "version": "0.5.0",
+  "description": "Текстовой монитор инфраструктуры opencode: те же узлы и статусы, что у infra-graph, но без GUI - для терминала и автоматизации. Читает mcp-watchdog\\state\\current.json. Переносимый: пути к каталогам берутся из переменных окружения INVR_LAB_DIR и INVR_ROLLBACK_ROOT (процесс, затем уровень User), машинные пути не зашиты.",
+  "entry": "opencode-status.ps1",
+  "type": "script",
+  "requires": {
+    "pwsh": ">=7.0"
+  },
+  "dependencies": [
+    "mcp-watchdog"
+  ],
+  "interfaces": {
+    "cli": {
+      "invoke": "pwsh -File {entry}",
+      "commands": [
+        "Once",
+        "Watch",
+        "Json",
+        "NoColor"
+      ]
+    }
+  },
+  "compat": {
+    "breaks": []
+  },
+  "published": "2026-09-26"
+}

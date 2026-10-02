@@ -1,0 +1,62 @@
+{
+  "schema": "invr.tool/1",
+  "name": "mcp-watchdog",
+  "version": "0.4.2",
+  "description": "Демон-страж MCP-серверов и сервисов оркестратора: каждые N секунд проверяет local-llm, firecrawl, MCP_DOCKER, ollama, browsertool, стек INVR, guardian и monitor, Docker daemon и факт жизни opencode. Для каждого узла считает ЯВНОЕ СОСТОЯНИЕ (active/idle/unloaded/need-guard/fault) по фактам демона, интентам владельца (state\\intents.json, state\\browsertool.json) и очкам из nodes.json монитора; unloaded не считается дефектом, заявки и автоподъём — только для fault. Ничего не завершает автоматически: публикует unloadCandidates и ждёт решения владельца; ядро (oc/watchdog/guardian/monitor) защищено от выгрузки. Ведёт state\\current.json и журнал заявок в requests\\.",
+  "entry": "mcp-watchdog.ps1",
+  "type": "service",
+  "requires": {
+    "pwsh": ">=7.0"
+  },
+  "dependencies": [
+    "browsertool"
+  ],
+  "runtime": {
+    "stateDir": "<tools-root>/mcp-watchdog/state",
+    "requestsDir": "<tools-root>/mcp-watchdog/requests",
+    "logFile": "<logs-root>/mcp-watchdog.log",
+    "intentsFile": "<tools-root>/mcp-watchdog/state/intents.json",
+    "nodesFile": "<tools-root>/monitor/state/nodes.json",
+    "launch": "Start-Process pwsh -ArgumentList '-NoProfile','-File','<tools-root>\\mcp-watchdog.ps1','-RuntimeDir','<tools-root>\\mcp-watchdog' -WindowStyle Hidden"
+  },
+  "runtimeNote": "Пути размещения задаются на целевой машине. <tools-root> = каталог с плоскими шимами инструментов (tools), <logs-root> = каталог журналов. Конкретные пути машины владельца намеренно не публикуются.",
+  "interfaces": {
+    "cli": {
+      "invoke": "pwsh -File {entry} -RuntimeDir <каталог состояния>",
+      "commands": [
+        "daemon",
+        "Once",
+        "-NodesFile <путь nodes.json>",
+        "-IntentsFile <путь intents.json>",
+        "-UnloadLogSec <интервал публикации кандидатов>"
+      ]
+    }
+  },
+  "states": [
+    "active",
+    "idle",
+    "unloaded",
+    "need-guard",
+    "fault"
+  ],
+  "nodeClasses": [
+    "core",
+    "agent",
+    "demand",
+    "service"
+  ],
+  "compat": {
+    "breaks": [
+      "0.4.1: уточнено состояние «жив, но очки истекли» — для demand/agent без намерения up это unloaded (простаивает), а не idle"
+    ],
+    "keeps": [
+      "checks.<узел>.status остаётся ok|fail (совместимость со status-banner и mcp-watchdog.md)",
+      "формат current.json расширен полями state/intent/owner/class/val/policy/unloadCandidates",
+      "автоподъём и троттлинг browsertool по state\\browsertool.json сохранены",
+      "формат заявки chk_*.json расширен полями state/intent/nodeClass",
+      "0.4.1: демон публикует намерения по умолчанию (desired=up для AlwaysOn) в state\\intents.json — тем же файлом пользуется монитор, поэтому «нужен» значит одно и то же у обоих; browsertool.json остаётся главным источником намерения browsertool",
+      "0.4.2: поиск процессов игнорирует одноразовые проверки из консоли (pwsh -Command «...»), которые раньше принимались за живые сервисы"
+    ]
+  },
+  "published": "2026-09-27"
+}

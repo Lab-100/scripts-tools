@@ -87,8 +87,16 @@ function Get-Status {
     $dockerSt = if ($Matches[1] -eq 'True') { 'ok' } else { 'warn' }
   }
   $rows += [pscustomobject]@{ Group='инфраструктура'; Id='docker';  Label='Docker Desktop';       Status=$dockerSt; Uptime=''; Detail='daemon: см. MCP_DOCKER' }
-  $rows += [pscustomobject]@{ Group='инфраструктура'; Id='lab';     Label='Lab100 (пул ИИ)';       Status='ok';      Uptime=''; Detail='C:\Scripts\Lab100' }
-  $rows += [pscustomobject]@{ Group='инфраструктура'; Id='rollback';Label='каталог отката';        Status='ok';      Uptime=''; Detail='E:\rollback-catalog' }
+  # Каталоги лаборатории и откатов — из окружения (процесс, затем User).
+  # Раньше были зашиты: каталога лаборатории и каталога отката.
+  $labDirEnv = if ($env:INVR_LAB_DIR) { $env:INVR_LAB_DIR } else { [Environment]::GetEnvironmentVariable('INVR_LAB_DIR', 'User') }
+  $rbDirEnv  = if ($env:INVR_ROLLBACK_ROOT) { $env:INVR_ROLLBACK_ROOT } else { [Environment]::GetEnvironmentVariable('INVR_ROLLBACK_ROOT', 'User') }
+  $labSt  = if ($labDirEnv -and (Test-Path -LiteralPath $labDirEnv)) { 'ok' } else { 'warn' }
+  $rbSt   = if ($rbDirEnv -and (Test-Path -LiteralPath $rbDirEnv)) { 'ok' } else { 'warn' }
+  $labDet = if ($labDirEnv) { $labDirEnv } else { 'не задан: INVR_LAB_DIR' }
+  $rbDet  = if ($rbDirEnv) { $rbDirEnv } else { 'не задан: INVR_ROLLBACK_ROOT' }
+  $rows += [pscustomobject]@{ Group='инфраструктура'; Id='lab';     Label='Lab100 (пул ИИ)';       Status=$labSt;    Uptime=''; Detail=$labDet }
+  $rows += [pscustomobject]@{ Group='инфраструктура'; Id='rollback';Label='каталог отката';        Status=$rbSt;     Uptime=''; Detail=$rbDet }
   $rows += [pscustomobject]@{ Group='инфраструктура'; Id='gh';      Label='GitHub (Lab-100/*)';    Status='ok';      Uptime=''; Detail='приватные репо' }
 
   return [pscustomobject]@{

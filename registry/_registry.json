@@ -34,7 +34,7 @@
     },
     {
       "name": "infra-graph",
-      "latest": "0.8.1"
+      "latest": "0.9.0"
     },
     {
       "name": "llm-mcp",
@@ -42,11 +42,11 @@
     },
     {
       "name": "mcp-watchdog",
-      "latest": "0.4.2"
+      "latest": "0.5.1"
     },
     {
       "name": "mcp-watchdog-guardian",
-      "latest": "0.2.1"
+      "latest": "0.2.3"
     },
     {
       "name": "opencode-monitor",
@@ -62,16 +62,16 @@
     },
     {
       "name": "opencode-status",
-      "latest": "0.4.0"
+      "latest": "0.5.0"
     },
     {
       "name": "resolve-tools",
-      "latest": "0.6.0"
+      "latest": "0.7.0"
     },
     {
       "name": "vmdisk",
       "latest": "0.2.0"
     }
   ],
-  "lastUpdated": "2026-09-27"
+  "lastUpdated": "2026-10-02"
 }
