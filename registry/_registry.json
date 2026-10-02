@@ -34,7 +34,7 @@
     },
     {
       "name": "infra-graph",
-      "latest": "0.6.0"
+      "latest": "0.8.1"
     },
     {
       "name": "llm-mcp",
@@ -42,11 +42,11 @@
     },
     {
       "name": "mcp-watchdog",
-      "latest": "0.3.0"
+      "latest": "0.4.2"
     },
     {
       "name": "mcp-watchdog-guardian",
-      "latest": "0.1.0"
+      "latest": "0.2.1"
     },
     {
       "name": "opencode-monitor",
@@ -54,7 +54,7 @@
     },
     {
       "name": "opencode-plugins",
-      "latest": "0.6.0"
+      "latest": "0.8.0"
     },
     {
       "name": "opencode-restart",
