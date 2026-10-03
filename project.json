@@ -19,7 +19,7 @@
     "mcp-watchdog": "0.5.x",
     "mcp-watchdog-guardian": "0.2.x",
     "opencode-monitor": "0.4.x",
-    "opencode-plugins": "0.8.x",
+    "opencode-plugins": "0.9.x",
     "opencode-restart": "0.1.x",
     "opencode-status": "0.5.x",
     "resolve-tools": "0.7.x",
