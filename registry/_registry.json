@@ -54,7 +54,7 @@
     },
     {
       "name": "opencode-plugins",
-      "latest": "0.8.0"
+      "latest": "0.9.0"
     },
     {
       "name": "opencode-restart",
