@@ -1,0 +1,40 @@
+{
+  "schema": "inrv.tool/1",
+  "name": "orch-metrics",
+  "version": "0.1.0",
+  "description": "Метрики распределения работы оркестратора opencode: вызовы по ролям (build / субагенты invr-*, explore, general), доля делегирования task, ходы и циклы вызовов, каналы провайдеров (lab100, doc-extract, firecrawl, local-llm, browsertool, gordon, gemini, openrouter, yandex, exa) по тексту аргументов, токены build против субагентов; на выходе — корректирующие рекомендации по порогам делегирования. Данные только для чтения: opencode.db (session/message/part), mcp-watchdog state/current.json, run-watch state/run-watch.json",
+  "entry": "orch-metrics.ps1",
+  "type": "script",
+  "requires": {
+    "pwsh": ">=7.0",
+    "python": ">=3.9"
+  },
+  "dependencies": [],
+  "interfaces": {
+    "cli": {
+      "invoke": "pwsh -NoProfile -File {entry}",
+      "commands": [
+        "-Sessions <N>",
+        "-Json",
+        "-NoState",
+        "-Quiet"
+      ]
+    },
+    "exitCodes": {
+      "0": "метрики собраны",
+      "1": "сбой чтения/записи состояния",
+      "2": "БД opencode отсутствует или недоступна"
+    },
+    "state": {
+      "json": "<tools>\\orch-metrics\\state\\orch-metrics.json (атомарная запись)",
+      "log": "<tools>\\orch-metrics\\state\\orch-metrics.log (кольцевой, 200 строк)"
+    }
+  },
+  "compat": {
+    "breaks": []
+  },
+  "notes": "Каталог состояния переносимый: INVR_TOOLS_ROOT, иначе два уровня выше каталога версии. Путь к БД переопределяется -DbPath или INVR_OPENCODE_DB, по умолчанию %USERPROFILE%\\.local\\share\\opencode\\opencode.db в режиме mode=ro. Наружу печатается таблица метрик (метрика → значение → вердикт) и список advice; -Json печатает полный JSON. Инструмент ничего не меняет вне своих файлов состояния.",
+  "author": "Lab-100",
+  "created": "2026-10-04",
+  "keywords": ["opencode", "orchestration", "metrics", "delegation", "subagent", "метрики", "делегирование"]
+}

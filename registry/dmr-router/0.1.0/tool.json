@@ -1,0 +1,23 @@
+{
+  "name": "dmr-router",
+  "version": "0.1.0",
+  "entry": "dmr-router.ps1",
+  "description": "Роутер локальных моделей Docker Model Runner: авто-выбор lite/heavy по задаче и свободной памяти, каскад с реальной пробой модели.",
+  "params": {
+    "Ask": "Текст задачи (обязателен, позиционный)",
+    "Mode": "auto | lite | heavy | fast (по умолчанию auto)",
+    "Task": "short | normal | deep — влияет на порог свободной памяти для heavy",
+    "DryRun": "Показать решение без запроса к модели",
+    "Json": "Машиночитаемый вывод (model, text, seconds, tokensPerSecond, reasons, cascadeTried)"
+  },
+  "models": {
+    "fast": "ai/llama3.2:1B-Q4_0 (~19 ток/с, 0,72 ГиБ)",
+    "lite": "ai/qwen2.5:3B-Q4_K_M (~12 ток/с, 1,80 ГиБ)",
+    "heavy": "ai/qwen3 (Qwen3-8B-Q4_K_M, 4,68 ГиБ, требует >=7 ГБ свободно)"
+  },
+  "requires": {
+    "service": "Docker Model Runner (порт 12434)",
+    "env": ["INVR_DMR_ROUTER_CONFIG (необязательно, по умолчанию конфиг рядом с инструментом)"]
+  },
+  "install_models": "Модели ставятся инструментом dmr-model (docker model в Docker Desktop 4.92 отсутствует)."
+}

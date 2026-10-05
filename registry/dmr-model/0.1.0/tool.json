@@ -1,0 +1,22 @@
+{
+  "name": "dmr-model",
+  "version": "0.1.0",
+  "entry": "dmr-model.ps1",
+  "description": "Установка/удаление моделей в локальное хранилище Docker Model Runner (OCI-layout) без CLI `docker model`.",
+  "commands": {
+    "list": "Показать установленные модели с проверкой целостности индексов",
+    "install": "Скачать модель из Docker Hub и зарегистрировать в локальном хранилище DMR",
+    "verify": "Сверить models.json с манифестами и блобами (sha256)",
+    "remove": "Удалить модель из индекса вместе с блобами/манифестом/bundle"
+  },
+  "params": {
+    "install": ["-Repo <ns/name>", "-Tag <tag>", "-DryRun"],
+    "remove": ["-Id <tag|sha256|prefix>"],
+    "common": ["-Quiet", "-TimeoutSec <n>"]
+  },
+  "requires": {
+    "network": "auth.docker.io + registry-1.docker.io (только для install)",
+    "env": ["INVR_DMR_STORE (необязательно, по умолчанию %USERPROFILE%\\.docker\\models)", "INVR_DMR_ENDPOINT (необязательно, по умолчанию http://127.0.0.1:12434)"]
+  },
+  "notes": "Docker Desktop 4.92/CLI 29.8.0 не содержит команды `docker model`; HTTP pull/delete у раннера отсутствуют (404). Инструмент работает напрямую с OCI-манифестом через Docker Hub Registry API."
+}

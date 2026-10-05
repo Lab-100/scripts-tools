@@ -1,0 +1,32 @@
+{
+  "schema": "invr.tool/1",
+  "name": "opencode-plugins",
+  "version": "0.10.0",
+  "description": "Плагины opencode: русский язык, запрет кракозябр, авто-UTF8 в консоли, баннер статусов. 0.10.0 — language-ru: детерминированный конвертер раскладок (ru/en/ka) и кастомный инструмент layout-translate (не ИИ): перевод чужой раскладки по позициям клавиш, результат отдаётся модели для оценки осмысленности; положительная оценка — использовать без переспроса, иначе прежний механизм.",
+  "entry": "opencode-plugins-install.ps1",
+  "type": "script",
+  "requires": {
+    "pwsh": ">=7.0"
+  },
+  "dependencies": [
+    "infra-graph",
+    "opencode-status",
+    "opencode-monitor"
+  ],
+  "interfaces": {
+    "cli": {
+      "invoke": "pwsh -File {entry}",
+      "commands": [
+        "install",
+        "CheckOnly",
+        "DryRun"
+      ]
+    }
+  },
+  "compat": {
+    "breaks": [
+      "0.7.0: формат строки статусов в баннере изменён — вместо [ok browsertool] печатается человеческое состояние ([выгружен browsertool:none]); прежний разбор строк по подстроке «ok <узел>» не работает"
+    ]
+  },
+  "published": "2026-10-03"
+}

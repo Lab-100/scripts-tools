@@ -1,0 +1,58 @@
+{
+  "endpoint": {
+    "baseUrl": "http://127.0.0.1:12434",
+    "chatCompletions": "/engines/llama.cpp/v1/chat/completions",
+    "note": "OpenAI-совместимый эндпоинт Docker Model Runner; /v1/models используется для проверки установки."
+  },
+  "systemPrompt": "Ты — локальный технический ассистент оркестратора OpenCode на Windows/PowerShell. Отвечай по-русски, кратко и по делу, без преамбул и без повторения вопроса. Команды и пути — в блоке кода.",
+  "models": {
+    "fast": {
+      "repo": "ai/llama3.2",
+      "tag": "1B-Q4_0",
+      "apiName": "ai/llama3.2:1B-Q4_0",
+      "minFreeGB": 2.0,
+      "note": "Самый быстрый (~19 ток/с): короткие вопросы, суммаризации, черновики."
+    },
+    "lite": {
+      "repo": "ai/qwen2.5",
+      "tag": "3B-Q4_K_M",
+      "apiName": "ai/qwen2.5:3B-Q4_K_M",
+      "minFreeGB": 3.5,
+      "note": "Рабочая лошадка (~12 ток/с, 1,80 ГиБ): большинство задач и код."
+    },
+    "heavy": {
+      "repo": "ai/qwen3",
+      "tag": "latest",
+      "apiName": "ai/qwen3",
+      "minFreeGB": 7.0,
+      "note": "Qwen3-8B-Q4_K_M (4,68 ГиБ): архитектура, разбор, рефакторинг. Требует >=7 ГБ свободно, иначе падает с 'failed to load model'."
+    },
+    "fallback": {
+      "repo": "ai/smollm2",
+      "tag": "latest",
+      "apiName": "ai/smollm2",
+      "minFreeGB": 1.0,
+      "note": "Не для продукта: на простых промптах отвечает эхом. Только как аварийный мини-резерв."
+    }
+  },
+  "memory": {
+    "heavyMinFreeGB": 7.0,
+    "heavyMinFreeGBDeep": 9.0,
+    "liteMinFreeGB": 3.5
+  },
+  "classifier": {
+    "keywords": [
+      "архитектур", "архитектура", "architected", "рефактор", "рефакторинг", "refactor",
+      "отлад", "дебаг", "debug", "диагности", "анализ", "разбор", "analyz", "исследуй",
+      "спроектируй", "проектир", "design", "adr", "модул", "интеграц", "миграц",
+      "тест", "тесты", "покрыти", "тестир", "unit", "pytest", "юнит",
+      "оптимиз", "производительност", "performance", "алгоритм", "сложност", "sql",
+      "сравни", "обзор", "ревью", "code review", "план", "стратег", "исслед"
+    ],
+    "probePrompt": "Одно слово: работаешь?",
+    "probeMaxTokens": 16
+  },
+  "timeouts": {
+    "requestSec": 900
+  }
+}

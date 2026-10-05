@@ -1,0 +1,28 @@
+{
+  "schema": "inrv.tool/1",
+  "name": "layr",
+  "version": "0.1.0",
+  "description": "Агентный клиент уровня opencode с обязательным слоем оркестрации над локальными (Ollama, Docker Model Runner, Gordon Desktop, Lab100) и облачными слоями: HTTP+SSE сервер, OpenAPI 3.1, сессии, режимы выбора слота и порта",
+  "entry": "layr.ps1",
+  "type": "script",
+  "requires": {
+    "node": ">=20",
+    "pwsh": ">=7.0"
+  },
+  "dependencies": [],
+  "interfaces": {
+    "cli": {
+      "invoke": "pwsh -File {entry} <команда> [флаги]",
+      "commands": [
+        "serve",
+        "chat",
+        "doctor",
+        "version"
+      ]
+    }
+  },
+  "compat": {
+    "breaks": []
+  },
+  "published": "2026-10-04"
+}
