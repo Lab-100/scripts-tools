@@ -1,0 +1,33 @@
+{
+  "schema": "inrv.tool/1",
+  "name": "run-watch",
+  "version": "0.1.1",
+  "description": "Запуск процессов оркестратора с гарантированной очисткой: после завершения или по пределу ожидания (-WaitSec) завершает сам процесс и всех потомков (дерево + поиск по -Marker), ведёт реестр запусков run-watch/state/run-watch.json для стража mcp-watchdog",
+  "entry": "run-watch.ps1",
+  "type": "script",
+  "requires": {
+    "pwsh": ">=7.0"
+  },
+  "dependencies": [],
+  "interfaces": {
+    "cli": {
+      "invoke": "pwsh -File {entry} -Target <путь> -Marker <строка>",
+      "commands": [
+        "-Target",
+        "-Arguments",
+        "-Marker",
+        "-Name",
+        "-WaitSec",
+        "-Visible",
+        "-Detach",
+        "-RuntimeDir"
+      ]
+    }
+  },
+  "compat": {
+    "breaks": [
+      "0.1.1 в отличие от 0.1.0 завершает корневой процесс после таймаута -WaitSec; вызовы, полагавшиеся на оставшийся процесс, должны использовать -Detach"
+    ]
+  },
+  "published": "2026-10-04"
+}

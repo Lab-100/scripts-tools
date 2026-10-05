@@ -1,6 +1,6 @@
 {
   "registryName": "invr-tools",
-  "schema": "invr.registry/1",
+  "schema": "inrv.registry/1",
   "defaultChannel": "stable",
   "repository": "https://github.com/Lab-100/scripts-tools.git",
   "tools": [
@@ -14,6 +14,14 @@
     },
     {
       "name": "browsertool",
+      "latest": "0.1.0"
+    },
+    {
+      "name": "dmr-model",
+      "latest": "0.1.0"
+    },
+    {
+      "name": "dmr-router",
       "latest": "0.1.0"
     },
     {
@@ -37,12 +45,16 @@
       "latest": "0.9.0"
     },
     {
+      "name": "layr",
+      "latest": "0.1.0"
+    },
+    {
       "name": "llm-mcp",
       "latest": "0.2.0"
     },
     {
       "name": "mcp-watchdog",
-      "latest": "0.5.2"
+      "latest": "0.5.3"
     },
     {
       "name": "mcp-watchdog-guardian",
@@ -54,7 +66,7 @@
     },
     {
       "name": "opencode-plugins",
-      "latest": "0.9.0"
+      "latest": "0.10.0"
     },
     {
       "name": "opencode-restart",
@@ -65,13 +77,21 @@
       "latest": "0.5.0"
     },
     {
+      "name": "orch-metrics",
+      "latest": "0.1.0"
+    },
+    {
       "name": "resolve-tools",
       "latest": "0.7.0"
+    },
+    {
+      "name": "run-watch",
+      "latest": "0.1.1"
     },
     {
       "name": "vmdisk",
       "latest": "0.2.0"
     }
   ],
-  "lastUpdated": "2026-10-03"
+  "lastUpdated": "2026-10-04"
 }

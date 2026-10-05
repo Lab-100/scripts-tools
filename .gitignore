@@ -20,6 +20,14 @@ node_modules/
 /browsertool/
 /mcp-watchdog/
 /state/
+/run-watch/
+/orch-metrics/
+
+# Линки-развёртки (junction) в tools\<tool> — создаются локером
+# resolve-tools для раскладки «инструмент рядом с реестром»; это
+# машино-зависимые указатели, а не содержимое, в публикуемый
+# репозиторий они не попадают.
+/tools/
 
 # Каталоги версий в registry/ должны оставаться чистыми: инструменты при
 # запуске без -RuntimeDir пишут state/, logs/, requests/, *.pid рядом с

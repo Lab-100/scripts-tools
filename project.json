@@ -4,7 +4,7 @@
   "version": "0.7.0",
   "description": "Реестр версий инструментов оркестрации INVR (паттерн registry/<tool>/<version> + tool.json + latest.txt), плоские шимы *.ps1 в корне проекта и локер resolve-tools",
   "owner": "Lab-100",
-  "privacy": "public",
+  "privacy": "private",
   "mode": "source",
   "tools": {
     "ai-provider-check": "0.2.x",
@@ -15,6 +15,7 @@
     "gordon": "0.3.x",
     "gordon-chat": "0.2.x",
     "infra-graph": "0.9.x",
+    "layr": "0.1.x",
     "llm-mcp": "0.2.x",
     "mcp-watchdog": "0.5.x",
     "mcp-watchdog-guardian": "0.2.x",
@@ -26,3 +27,4 @@
     "vmdisk": "0.2.x"
   }
 }
+
