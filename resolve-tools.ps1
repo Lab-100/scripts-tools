@@ -3,8 +3,11 @@
 # Шим переносимый: реестр ищется от расположения самого шима, поэтому
 # одинаково работает в клоне реестра, в плоском каталоге инструментов и в
 # раскладке дистрибутора (шим в <tool-dir>, реестр в <tool-dir>\tools\registry).
+# INVR_TOOLS_ROOT = каталог шима; инструменты берут отсюда свои рабочие данные
+# (monitor\state, mcp-watchdog-guardian\state и т.п.) вместо зашитых путей.
 $tool  = 'resolve-tools'
 $entry = 'resolve-tools.ps1'
+if (-not $env:INVR_TOOLS_ROOT) { $env:INVR_TOOLS_ROOT = $PSScriptRoot }
 $regRoot = if ($env:INVR_REGISTRY -and (Test-Path -LiteralPath $env:INVR_REGISTRY)) { $env:INVR_REGISTRY }
            elseif (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'registry')) { Join-Path $PSScriptRoot 'registry' }
            elseif (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'tools\registry')) { Join-Path $PSScriptRoot 'tools\registry' }
