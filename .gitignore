@@ -58,3 +58,6 @@ registry/**/*.pid
 # Машинные артефакты развёртывания: rollback-root.txt пишется деплойером
 # на конкретной машине (путь каталога отката), в реестр не коммитится.
 registry/**/rollback-root.txt
+
+# Результаты Pester в CI-режиме
+testResults.xml
