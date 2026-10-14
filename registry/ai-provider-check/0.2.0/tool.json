@@ -1,5 +1,5 @@
 {
-  "schema": "inrv.tool/1",
+  "schema": "invr.tool/1",
   "name": "ai-provider-check",
   "version": "0.2.0",
   "description": "Проверка доступности облачных LLM-провайдеров по ключам (409/401/429) и локальной Ollama",

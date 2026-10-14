@@ -1,7 +1,7 @@
 {
-  "schema": "inrv.tool/1",
+  "schema": "invr.tool/1",
   "name": "backup-util",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Каталог откатов: backup/list/undo с restore-скриптами. Корень из rollback-root.txt (задаётся deploy) или переменной INVR_ROLLBACK_ROOT; по умолчанию — несистемный диск",
   "entry": "backup-util.ps1",
   "type": "script",

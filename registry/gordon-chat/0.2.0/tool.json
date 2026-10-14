@@ -1,4 +1,5 @@
 {
+  "schema": "invr.tool/1",
   "name": "gordon-chat",
   "version": "0.2.0",
   "description": "Программный диалог с облачным ИИ «Гордон» из Docker Desktop (Claude, лимиты Gordon Base tier) через named pipe API docker-agent. Режимы: -Ask (продолжает сохранённую сессию), -Sessions, -SessionId, -Model, -ResetSession, -Json (машиночитаемый ответ ok/error/needs_approval/no_text для роутеров).",

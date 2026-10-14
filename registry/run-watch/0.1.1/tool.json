@@ -1,5 +1,5 @@
 {
-  "schema": "inrv.tool/1",
+  "schema": "invr.tool/1",
   "name": "run-watch",
   "version": "0.1.1",
   "description": "Запуск процессов оркестратора с гарантированной очисткой: после завершения или по пределу ожидания (-WaitSec) завершает сам процесс и всех потомков (дерево + поиск по -Marker), ведёт реестр запусков run-watch/state/run-watch.json для стража mcp-watchdog",

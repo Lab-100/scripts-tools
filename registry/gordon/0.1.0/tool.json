@@ -1,5 +1,5 @@
 {
-  "schema": "inrv.tool/1",
+  "schema": "invr.tool/1",
   "name": "gordon",
   "version": "0.1.0",
   "description": "Роутер задач к LLM-провайдерам (облачные по ключам в порядке из конфига) с фолбэком на Docker Model Runner",

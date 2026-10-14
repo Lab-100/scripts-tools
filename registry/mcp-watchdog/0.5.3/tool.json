@@ -1,5 +1,5 @@
 {
-  "schema": "inrv.tool/1",
+  "schema": "invr.tool/1",
   "name": "mcp-watchdog",
   "version": "0.5.3",
   "description": "Демон-страж MCP-серверов и сервисов оркестратора: каждые N секунд проверяет local-llm, firecrawl, MCP_DOCKER, ollama, browsertool, стек INVR, guardian и monitor, Docker daemon и факт жизни opencode. Для каждого узла считает ЯВНОЕ СОСТОЯНИЕ (active/idle/unloaded/need-guard/fault) по фактам демона, интентам владельца (state\\intents.json, state\\browsertool.json) и очкам из nodes.json монитора; unloaded не считается дефектом, заявки и автоподъём — только для fault. Автоподъём Docker надёжнее: перед стартом поднимает службу com.docker.service, при WSL-дистрибутиве docker-desktop в состоянии Stopped сбрасывает WSL, дубли инстансов Docker Desktop не создаёт. Завершает только «зомби»-потомков запусков оркестратора из реестра run-watch (reaper), узлы не выгружает: публикует unloadCandidates и ждёт решения владельца; ядро (oc/watchdog/guardian/monitor) защищено от выгрузки. Ведёт state\\current.json и журнал заявок в requests\\.",

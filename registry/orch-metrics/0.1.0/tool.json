@@ -1,5 +1,5 @@
 {
-  "schema": "inrv.tool/1",
+  "schema": "invr.tool/1",
   "name": "orch-metrics",
   "version": "0.1.0",
   "description": "Метрики распределения работы оркестратора opencode: вызовы по ролям (build / субагенты invr-*, explore, general), доля делегирования task, ходы и циклы вызовов, каналы провайдеров (lab100, doc-extract, firecrawl, local-llm, browsertool, gordon, gemini, openrouter, yandex, exa) по тексту аргументов, токены build против субагентов; на выходе — корректирующие рекомендации по порогам делегирования. Данные только для чтения: opencode.db (session/message/part), mcp-watchdog state/current.json, run-watch state/run-watch.json",

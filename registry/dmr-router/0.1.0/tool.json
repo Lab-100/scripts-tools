@@ -1,4 +1,5 @@
 {
+  "schema": "invr.tool/1",
   "name": "dmr-router",
   "version": "0.1.0",
   "entry": "dmr-router.ps1",

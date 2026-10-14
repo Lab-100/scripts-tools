@@ -1,5 +1,5 @@
 {
-  "schema": "inrv.tool/1",
+  "schema": "invr.tool/1",
   "name": "vmdisk",
   "version": "0.1.0",
   "description": "Управление виртуальными дисками с меткой .devstation-created и стражем (манифест+размер)",
