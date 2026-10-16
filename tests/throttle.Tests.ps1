@@ -55,6 +55,16 @@ Describe 'Троттлинг: библиотека активной версии
         $text | Should -Match '\$ThrottleMaxCpuPct\s*=\s*85\b'
     }
 
+    It 'Write-Log не пишет в поток вывода (0.6.3: иначе ломаются return-значения)' {
+        # Демон запускается в фоне, консоли у него нет, поэтому вывод в поток
+        # не нужен. А Write-Output внутри Write-Log раздувал возвращаемое значение
+        # любой функции с return: (строка лога, $false) вместо $false — из-за чего
+        # проверка блокировки и результат авто-подъёма всегда считались успехом.
+        $text = Get-Content -LiteralPath (Join-Path $versionDir 'mcp-watchdog.ps1') -Raw -Encoding UTF8
+        $text | Should -Match 'Write-Host \$line'
+        $text | Should -Not -Match 'Write-Output \$line'
+    }
+
     It 'демон берёт эксклюзивную блокировку файла (0.6.2: один демон)' {
         $text = Get-Content -LiteralPath (Join-Path $versionDir 'mcp-watchdog.ps1') -Raw -Encoding UTF8
         $text | Should -Match 'FileShare\]::None'   # атомарная блокировка, не зависит от WMI
