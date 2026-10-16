@@ -1,0 +1,197 @@
+"""
+MCP-сервер «локальные LLM» для opencode-оркестратора.
+
+Даёт инструменты:
+  - list_local_models()          — список моделей Ollama
+  - model_chat(...)              — разовый вызов выбранной модели (8b/3b/3b-cpu)
+  - agent_task(...)              — полный Hermes-агент (с инструментами) на задачу
+
+Оркестратор (основной агент opencode) сам решает, какой инструмент/модель
+использовать под задачу: 3b — быстро и дёшево, 8b — умнее, agent_task — когда
+нужны реальные действия (файлы, терминал, память).
+
+ЭКОНОМНЫЙ РЕЖИМ ИНФЕРЕНСА (версия 0.3.0). На слабой машине без GPU главные
+пожиратели ресурсов — не веса модели, а окно контекста и удержание модели в
+памяти после запроса. Поэтому лимиты вынесены в переменные окружения и по
+умолчанию экономные:
+
+  INVR_LLM_NUM_CTX       окно контекста, по умолчанию 4096 (было 16384).
+                          KV-кэш растёт пропорционально окну — это главный
+                          источник экономии памяти.
+  INVR_LLM_KEEP_ALIVE    сколько держать модель в памяти после запроса,
+                          по умолчанию 3m (было 30m).
+  INVR_LLM_NUM_THREAD    число потоков инференса, по умолчанию 2.
+                          Ограничивает загрузку процессора (на 4 логических
+                          процессорах 2 потока ≈ половина загрузки).
+  INVR_LLM_NUM_PREDICT   потолок длины ответа, по умолчанию 768.
+  INVR_LLM_NUM_BATCH     размер батча вычислений, по умолчанию 256.
+  INVR_LLM_MODEL_ALLOW   дополнительные разрешённые модели через «;»
+                          (список hermes3:* всегда разрешён).
+
+Второй эшелон экономии — демон mcp-watchdog 0.6.0: он следит за свободной
+памятью и загрузкой процессора и выгружает модели из памяти, когда система
+начинает задыхаться.
+
+Канон инструмента живёт в реестре INVR (tools/registry/llm-mcp/<version>).
+Проекты подключают его линком tools/llm-mcp (см. project.json) или прямым
+путем в конфиг MCP; старый путь scripts/llm_mcp_server.py — тонкий мост.
+"""
+import json
+import os
+import subprocess
+import urllib.request
+import urllib.error
+
+from mcp.server.mcpserver import MCPServer
+
+mcp = MCPServer(name="local-llm-orchestrator")
+
+OLLAMA = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+
+
+def _env_int(name: str, default: int) -> int:
+    """Целое из окружения; мусор и неположительные значения → дефолт."""
+    raw = (os.environ.get(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
+def _env_models(name: str, defaults: set) -> set:
+    """Список разрешённых моделей: базовый набор + список из окружения через ';'."""
+    raw = (os.environ.get(name) or "").strip()
+    models = set(defaults)
+    if raw:
+        models.update(item.strip() for item in raw.split(";") if item.strip())
+    return models
+
+
+# Базовый список Hermes-моделей (совпадает с прежним MODEL_ALLOW).
+_BASE_MODEL_ALLOW = {
+    "hermes3:8b",
+    "hermes3:3b",
+    "hermes3:3b-cpu",
+    "hermes3:3b-l8",
+    "hermes3:3b-l12",
+    "hermes3:3b-l16",
+}
+MODEL_ALLOW = _env_models("INVR_LLM_MODEL_ALLOW", _BASE_MODEL_ALLOW)
+
+# Экономные лимиты локального инференса (см. шапку модуля).
+NUM_CTX = _env_int("INVR_LLM_NUM_CTX", 4096)
+KEEP_ALIVE = (os.environ.get("INVR_LLM_KEEP_ALIVE") or "").strip() or "3m"
+NUM_THREAD = _env_int("INVR_LLM_NUM_THREAD", 2)
+NUM_PREDICT_CAP = _env_int("INVR_LLM_NUM_PREDICT", 768)
+NUM_BATCH = _env_int("INVR_LLM_NUM_BATCH", 256)
+
+# Пути локальной установки Hermes. Дефолты переносимы, переопределяются env.
+HERMES_EXE = os.environ.get(
+    "HERMES_EXE", os.path.join(os.path.expanduser("~"), ".local", "bin", "hermes.exe")
+)
+PROJECT_DIR = os.environ.get("HERMES_PROJECT_DIR", r"C:\Scripts\hermes-project")
+
+
+def _ollama_post(path: str, payload: dict, timeout: float = 900.0):
+    req = urllib.request.Request(
+        OLLAMA + path,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.URLError as e:
+        raise RuntimeError(f"Ollama недоступен ({e.reason}). Сервер запущен?") from e
+
+
+@mcp.tool()
+def list_local_models() -> str:
+    """Показать локальные модели Ollama (имена) с размерами. Используй перед выбором модели."""
+    try:
+        req = urllib.request.Request(OLLAMA + "/api/tags", method="GET")
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        rows = []
+        for m in data.get("models", []):
+            rows.append(f"{m['name']}  ({round(m.get('size', 0) / 1e9, 2)} GB)")
+        return "\n".join(rows) if rows else "Моделей нет (ollama pull ...)"
+    except Exception as e:
+        return f"Ошибка: {e}"
+
+
+@mcp.tool()
+def model_chat(model: str, prompt: str, system: str = "", max_tokens: int = 512, temperature: float = 0.7) -> str:
+    """
+    Разовый вызов локальной модели БЕЗ инструментов.
+    - model: hermes3:8b (умный, медленный ~10-15 ток/с), hermes3:3b (быстрый,
+      слабее), hermes3:3b-cpu (только CPU). Дополнительные модели — через
+      INVR_LLM_MODEL_ALLOW.
+    - prompt: текст запроса.
+    - system: опциональная системная инструкция.
+    - max_tokens: лимит ответа (фактически ещё обрезается NUM_PREDICT_CAP).
+    Возвращает текст ответа модели. Подходит для коротких вопросов, суммаризаций,
+    генерации текста; для реальных действий (файлы, терминал) используй agent_task.
+    """
+    if model not in MODEL_ALLOW:
+        return f"Модель {model} не разрешена. Доступны: {', '.join(sorted(MODEL_ALLOW))}"
+    messages = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt})
+    payload = {
+        "model": model,
+        "messages": messages,
+        "stream": False,
+        "keep_alive": KEEP_ALIVE,
+        "options": {
+            "num_ctx": NUM_CTX,
+            "num_predict": max_tokens if max_tokens <= NUM_PREDICT_CAP else NUM_PREDICT_CAP,
+            "num_thread": NUM_THREAD,
+            "num_batch": NUM_BATCH,
+            "temperature": temperature,
+        },
+    }
+    try:
+        data = _ollama_post("/api/chat", payload)
+    except Exception as e:
+        return f"Ошибка вызова: {e}"
+    content = data.get("message", {}).get("content", "")
+    return content.strip() or "(пустой ответ)"
+
+
+@mcp.tool()
+def agent_task(prompt: str, model: str = "hermes3:8b", timeout_s: int = 1800) -> str:
+    """
+    Запустить полного Hermes-агента (с инструментами: файлы, терминал, память)
+    в C:\\Scripts\\hermes-project на задачу prompt одним прогоном.
+    МЕДЛЕННО (минуты, CPU): используй только когда нужны реальные действия или
+    глубокая работа с файлами/данными, а не простые ответы.
+    model: hermes3:8b (по умолчанию) или hermes3:3b (быстрее, слабее).
+    Возвращает итоговый ответ агента.
+    """
+    if model not in MODEL_ALLOW:
+        return f"Модель {model} не разрешена. Доступны: {', '.join(sorted(MODEL_ALLOW))}"
+    cmd = [HERMES_EXE, "-z", prompt, "-m", model, "--yolo"]
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            timeout=timeout_s,
+            cwd=PROJECT_DIR,
+        )
+    except subprocess.TimeoutExpired as e:
+        return f"agent_task: превышен таймаут {timeout_s}s. Частичный вывод:\n{e.stdout[-1500:] if e.stdout else '(пусто)'}"
+    out = (proc.stdout or b"").decode("utf-8", errors="replace").strip()
+    err = (proc.stderr or b"").decode("utf-8", errors="replace").strip()
+    if proc.returncode != 0:
+        return f"agent_task: rc={proc.returncode}\n--- stdout ---\n{out[-3000:]}\n--- stderr ---\n{err[-1500:]}"
+    return out[-6000:] or "(пустой ответ агента)"
+
+
+if __name__ == "__main__":
+    mcp.run()
