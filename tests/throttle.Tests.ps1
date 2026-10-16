@@ -55,6 +55,13 @@ Describe 'Троттлинг: библиотека активной версии
         $text | Should -Match '\$ThrottleMaxCpuPct\s*=\s*85\b'
     }
 
+    It 'демон берёт эксклюзивную блокировку файла (0.6.2: один демон)' {
+        $text = Get-Content -LiteralPath (Join-Path $versionDir 'mcp-watchdog.ps1') -Raw -Encoding UTF8
+        $text | Should -Match 'FileShare\]::None'   # атомарная блокировка, не зависит от WMI
+        $text | Should -Match 'Enter-DaemonLock'
+        $text | Should -Match 'watchdog\.lock'
+    }
+
     It 'демон сигналит о нарушении порогов, даже когда выгружать нечего (0.6.1)' {
         $text = Get-Content -LiteralPath (Join-Path $versionDir 'mcp-watchdog.ps1') -Raw -Encoding UTF8
         $text | Should -Match 'lastBreachLogAt'      # нарушение пишется не чаще заданного интервала
