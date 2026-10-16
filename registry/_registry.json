@@ -54,7 +54,7 @@
     },
     {
       "name": "mcp-watchdog",
-      "latest": "0.6.3"
+      "latest": "0.6.4"
     },
     {
       "name": "mcp-watchdog-guardian",

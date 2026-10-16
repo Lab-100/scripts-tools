@@ -1,0 +1,88 @@
+{
+  "schema": "invr.tool/1",
+  "name": "mcp-watchdog",
+  "version": "0.6.4",
+  "description": "Демон-страж MCP-серверов и сервисов оркестратора: каждые N секунд проверяет local-llm, firecrawl, MCP_DOCKER, ollama, browsertool, стек INVR, guardian и monitor, Docker daemon и факт жизни opencode. Для каждого узла считает ЯВНОЕ СОСТОЯНИЕ (active/idle/unloaded/need-guard/fault) по фактам демона, интентам владельца (state\\intents.json, state\\browsertool.json) и очкам из nodes.json монитора; unloaded не считается дефектом: status='off' (не 'fail'), заявки закрываются автоматически, автоподъём — только для fault. Автоподъём Docker надёжнее: перед стартом поднимает службу com.docker.service, при WSL-дистрибутиве docker-desktop в состоянии Stopped сбрасывает WSL, дубли инстансов Docker Desktop не создаёт. Автоподъём local-llm не плодит дубли процессов. Завершает только «зомби»-потомков запусков оркестратора из реестра run-watch (reaper), узлы не выгружает: публикует unloadCandidates (без пустых записей) и ждёт решения владельца; ядро (oc/watchdog/guardian/monitor) защищено от выгрузки. ТРОТТЛИНГ РЕСУРСОВ ЛОКАЛЬНЫХ МОДЕЛЕЙ (0.6.0+): по требованию владельца при работе локальной модели в системе остаётся не меньше 10% свободной памяти и не больше 85% загрузки CPU. Два эшелона: мягкий — процесс runner'а Ollama (llama-server) каждый цикл опускается до BelowNormal; жёсткий — при нарушении порогов из памяти выгружаются только реально загруженные модели (GET /api/ps), потому что POST /api/generate с keep_alive=0 для незагруженной модели сначала её аллоцирует. Выгрузка полностью обратима (модель поднимается по запросу) и не трогает узлы-сервисы: политика owner-decides сохранена. Защита от раскачки: гистерезис порогов возврата к норме, минимальный интервал между выгрузками (-ThrottleMinGapSec), не более одного события за цикл; сам планировщик Ollama не даёт выгрузить модель посреди активного запроса. Замеры дешёвые: память GlobalMemoryStatusEx, CPU PerformanceCounter, без WMI в цикле (запасные пути есть). Чистая логика решения вынесена в throttle-lib.ps1 и покрыта тестами. 0.6.1: нарушение порогов пишется в журнал и в current.json (resourceThrottle.breached) даже когда выгружать нечего — раньше такой случай молчал, и источник нехватки ресурсов приходилось искать вслепую; интервал записи задаётся -ThrottleBreachLogSec. Ведёт state\\current.json, state\\throttle.json и журнал заявок в requests\\.",
+  "entry": "mcp-watchdog.ps1",
+  "type": "service",
+  "requires": {
+    "pwsh": ">=7.0"
+  },
+  "dependencies": [
+    "browsertool",
+    "run-watch"
+  ],
+  "runtime": {
+    "stateDir": "<tools-root>/mcp-watchdog/state",
+    "requestsDir": "<tools-root>/mcp-watchdog/requests",
+    "logFile": "<logs-root>/mcp-watchdog.log",
+    "intentsFile": "<tools-root>/mcp-watchdog/state/intents.json",
+    "nodesFile": "<tools-root>/monitor/state/nodes.json",
+    "runWatchFile": "<tools-root>/run-watch/state/run-watch.json",
+    "throttleStateFile": "<tools-root>/mcp-watchdog/state/throttle.json",
+    "launch": "Start-Process pwsh -ArgumentList '-NoProfile','-File','<tools-root>\\mcp-watchdog.ps1','-RuntimeDir','<tools-root>\\mcp-watchdog' -WindowStyle Hidden"
+  },
+  "runtimeNote": "Пути размещения задаются на целевой машине. <tools-root> = каталог с плоскими шимами инструментов (tools), <logs-root> = каталог журналов. Конкретные пути машины владельца намеренно не публикуются.",
+  "interfaces": {
+    "cli": {
+      "invoke": "pwsh -File {entry} -RuntimeDir <каталог состояния>",
+      "commands": [
+        "daemon",
+        "Once",
+        "-NodesFile <путь nodes.json>",
+        "-IntentsFile <путь intents.json>",
+        "-UnloadLogSec <интервал публикации кандидатов>",
+        "-ThrottleMinFreeMemPct <порог свободной памяти, %>",
+        "-ThrottleMaxCpuPct <порог загрузки CPU, %>",
+        "-ThrottleResumeMemPct <порог возврата к норме по памяти, %>",
+        "-ThrottleResumeCpuPct <порог возврата к норме по CPU, %>",
+        "-ThrottleMinGapSec <минимальный интервал между выгрузками, с>",
+        "-ThrottleMode enforce|report",
+        "-ThrottleBreachLogSec <интервал записи нарушений без выгрузки, с>",
+        "-NoRunnerPriority <не понижать приоритет runner'а>",
+        "-OllamaHost <хост:порт Ollama>"
+      ]
+    }
+  },
+  "states": [
+    "active",
+    "idle",
+    "unloaded",
+    "need-guard",
+    "fault"
+  ],
+  "nodeClasses": [
+    "core",
+    "agent",
+    "demand",
+    "service"
+  ],
+  "throttleStates": [
+    "none",
+    "unload",
+    "report",
+    "skip-gap"
+  ],
+  "compat": {
+    "breaks": [],
+    "keeps": [
+      "checks.<узел>.status остаётся ok|fail|off (совместимость со status-banner и mcp-watchdog.md)",
+      "формат current.json расширен полями state/intent/owner/class/val/policy/unloadCandidates",
+      "автоподъём и троттлинг browsertool по state\\browsertool.json сохранены",
+      "формат заявки chk_*.json расширен полями state/intent/nodeClass",
+      "0.4.1: демон публикует намерения по умолчанию (desired=up для AlwaysOn) в state\\intents.json — тем же файлом пользуется монитор, поэтому «нужен» значит одно и то же у обоих; browsertool.json остаётся главным источником намерения browsertool",
+      "0.4.2: поиск процессов игнорирует одноразовые проверки из консоли (pwsh -Command «...»), которые раньше принимались за живые сервисы",
+      "0.5.1: один снимок процессов на цикл (кэш 20 с) вместо Get-CimInstance на каждый узел — меньше нагрузка и нет ложных «процессов: 0» при отказе WMI; guardian и monitor дополнительно проверяются по pid-файлу / pid из nodes.json; автовосстановление Docker Desktop при сбое vpnkit-bridge на русской локали (wsl --shutdown + вторая попытка)",
+      "0.5.2: Docker Desktop не запускается повторно, если уже работает (иначе копились 7 экземпляров и backend не поднимался); перезапуск WSL не чаще раза в 10 мин; current.json получает heartbeat в начале каждого цикла (guardian больше не считает демон подвисшим во время долгого лечения)",
+      "0.5.3: автоподъём Docker проверяет и чинит причину сбоя после перезагрузки — служба com.docker.service и WSL-дистрибутив docker-desktop (Stopped) готовятся ДО старта Docker Desktop; добавлен reaper запусков оркестратора (чистка зомби-потомков по реестру run-watch\\state\\run-watch.json, порог 600 с), узлы системы он не завершает",
+      "0.5.4: выгруженный по требованию узел (state=unloaded) получает status='off' вместо 'fail' — «не дефект» виден и в current.json, и в баннере; при переходе узла в unloaded его открытые заявки закрываются автоматически (resolved/watchdog); автоподъём local-llm не плодит дубли (проверка перед запуском); unloadCandidates публикуются без пустых записей. Лечит вечно висящие заявки firecrawl/MCP_DOCKER.",
+      "0.5.5: openTickets в state\\current.json — пустой список публикуется как [], без мусорного [null] (пустой массив из функции разворачивался в $null)",
+      "0.6.0: добавлен троттлинг ресурсов локальных моделей (пороги 10% свободной памяти и 85% CPU по умолчанию, режим enforce, антидребезг 120 с, runner ниже обычного приоритета). Новый раздел current.json — resourceThrottle; state\\throttle.json хранит последнее действие и счётчик выгрузок. Узлы-сервисы не выгружаются: политика owner-decides и защита ядра не изменились. Старые вызовы без новых параметров работают как раньше (троттлинг активен по умолчанию).",
+      "0.6.1: нарушение порога памяти/CPU попадает в журнал (уровень WARN, не чаще -ThrottleBreachLogSec с) и в current.json (resourceThrottle.breached), даже когда ни одна модель не загружена: это прямо указывает, что ресурсы ест не ollama. Решение о выгрузке и все пороги 0.6.0 не изменились",
+      "0.6.2: один демон на машину — эксклюзивная файловая блокировка state\\watchdog.lock (FileShare::None). Прежняя защита по pid-файлу опиралась на один запрос Get-CimInstance, который на этой машине периодически не отвечает, из-за чего guardian успевал поднять второй демон (два демона писали один current.json, каждый поднимал свой local-llm, зомби-процессы ели процессорное время). Разовый прогон -Once блокировку не берёт",
+      "0.6.3: исправлен возврат значений функций, которые пишут в журнал. Write-Log печатал строку в поток вывода через Write-Output, поэтому функция с `return $false` возвращала массив (строка лога, $false) вместо логического значения: проверка `if (Start-OllamaServer)` считала непустой массив истиной всегда (авто-подъём отмечался успешным даже при неудаче), а блокировка из 0.6.2 теряла результат и дубль демона проходил. Теперь журнал печатается через Write-Host — консольный вывод тот же, возвращаемые значения чистые",
+      "0.6.4: исправлена выгрузка моделей, которая не работала вовсе. Get-InvrOllamaLoadedModels возвращал список через оператор запятая (return ,`$models), то есть массив внутри массива; вызывающая сторона оборачивала результат в `@(...)`, и в цикл выгрузки попадал весь массив вместо имени модели — вызов Unload-InvrOllamaModel -Model падал с ошибкой приведения к строке. Теперь функция отдаёт плоский массив строк, а в цикле имя приводится к строке. Жёсткий эшелон троттлинга (выгрузка при нарушении порога) фактически не работал с 0.6.0; мягкий эшелон (понижение приоритета runner'а) работал"
+    ]
+  },
+  "published": "2026-10-16"
+}

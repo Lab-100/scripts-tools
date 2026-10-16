@@ -37,6 +37,8 @@ Describe 'Троттлинг: библиотека активной версии
         $toolDir     = Join-Path $registryRoot 'mcp-watchdog'
         $latest      = ((Get-Content -LiteralPath (Join-Path $toolDir 'latest.txt') -Raw -Encoding UTF8) -replace "`r?`n", '').Trim()
         $versionDir  = Join-Path $toolDir $latest
+        # библиотека нужна и здесь: тест формы списка моделей вызывает её функцию
+        . (Join-Path $toolDir (Join-Path $latest 'throttle-lib.ps1'))
     }
 
     It 'в активной версии mcp-watchdog <Latest> есть throttle-lib.ps1' {
@@ -53,6 +55,24 @@ Describe 'Троттлинг: библиотека активной версии
         $text = Get-Content -LiteralPath (Join-Path $versionDir 'mcp-watchdog.ps1') -Raw -Encoding UTF8
         $text | Should -Match '\$ThrottleMinFreeMemPct\s*=\s*10\b'
         $text | Should -Match '\$ThrottleMaxCpuPct\s*=\s*85\b'
+    }
+
+    It 'список загруженных моделей — плоский массив строк (0.6.4: иначе выгрузка падает)' {
+        # Оператор запятая (return ,$models) упаковывает массив в массив, и цикл
+        # выгрузки получает вместо имени модели весь массив — вызов с -Model падает.
+        # Ollama на машине CI может и не быть: проверяем форму на недоступном адресе
+        # (должен быть пустой массив, а не массив с одним вложенным элементом) и
+        # отдельно — что в цикле выгрузки имя приводится к строке.
+        $models = @(Get-InvrOllamaLoadedModels -OllamaHost 'http://127.0.0.1:1' -TimeoutSec 1)
+        $models.Count | Should -Be 0 -Because 'сервера нет — список должен быть пустым, без вложенного массива'
+
+        $daemon = Get-Content -LiteralPath (Join-Path $versionDir 'mcp-watchdog.ps1') -Raw -Encoding UTF8
+        $daemon | Should -Match '\$name = \[string\]\$m'
+
+        # Код (без комментариев): упаковки массива в массив быть не должно
+        $libCode = (Get-Content -LiteralPath (Join-Path $versionDir 'throttle-lib.ps1') -Encoding UTF8) |
+            Where-Object { $_ -notmatch '^\s*#' }
+        ($libCode -join "`n") | Should -Not -Match 'return\s+,\s*\$models'
     }
 
     It 'Write-Log не пишет в поток вывода (0.6.3: иначе ломаются return-значения)' {
