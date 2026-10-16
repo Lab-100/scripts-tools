@@ -75,6 +75,18 @@ Describe 'Троттлинг: библиотека активной версии
         ($libCode -join "`n") | Should -Not -Match 'return\s+,\s*\$models'
     }
 
+    It 'загрузка CPU измеряется, а не «недоступна» (0.6.5: первый цикл демона)' {
+        # Счётчик PerformanceCounter на первом вызове не прогрет и отдаёт -1,
+        # то есть порог CPU в первый цикл не проверялся бы. Проверяем, что в этом
+        # единственном случае берётся запасной замер WMI, и что он вообще есть.
+        $libCode = (Get-Content -LiteralPath (Join-Path $versionDir 'throttle-lib.ps1') -Encoding UTF8) |
+            Where-Object { $_ -notmatch '^\s*#' }
+        ($libCode -join "`n") | Should -Match 'Get-InvrCpuLoadPctWmi'
+        $cpu = Get-InvrCpuLoadPct
+        $cpu | Should -BeGreaterOrEqual 0 -Because 'метрика CPU должна измеряться, а -1 означает «недоступно»'
+        $cpu | Should -BeLessOrEqual 100
+    }
+
     It 'Write-Log не пишет в поток вывода (0.6.3: иначе ломаются return-значения)' {
         # Демон запускается в фоне, консоли у него нет, поэтому вывод в поток
         # не нужен. А Write-Output внутри Write-Log раздувал возвращаемое значение
