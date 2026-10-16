@@ -105,7 +105,10 @@ project.json              манифест проекта: владелец, р�
 процессора не выше 85%** (то есть свободно не меньше 15% процессорного
 времени). Переопределяются параметрами `-ThrottleMinFreeMemPct`,
 `-ThrottleMaxCpuPct`, `-ThrottleResumeMemPct`, `-ThrottleResumeCpuPct`,
-`-ThrottleMinGapSec` и режимом `-ThrottleMode enforce|report`.
+`-ThrottleMinGapSec` и режимом `-ThrottleMode enforce|report`. Нарушение
+порогов при отсутствии загруженных моделей пишется в журнал не чаще одного
+раза в `-ThrottleBreachLogSec` с и в `current.json` как
+`resourceThrottle.breached`: это прямо говорит, что ресурсы ест не ollama.
 
 Три правила, из-за которых троттлинг безопасен:
 

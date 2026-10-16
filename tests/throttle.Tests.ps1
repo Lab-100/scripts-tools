@@ -54,6 +54,13 @@ Describe 'Троттлинг: библиотека активной версии
         $text | Should -Match '\$ThrottleMinFreeMemPct\s*=\s*10\b'
         $text | Should -Match '\$ThrottleMaxCpuPct\s*=\s*85\b'
     }
+
+    It 'демон сигналит о нарушении порогов, даже когда выгружать нечего (0.6.1)' {
+        $text = Get-Content -LiteralPath (Join-Path $versionDir 'mcp-watchdog.ps1') -Raw -Encoding UTF8
+        $text | Should -Match 'lastBreachLogAt'      # нарушение пишется не чаще заданного интервала
+        $text | Should -Match 'breached\s*='         # признак попадает в current.json
+        $text | Should -Match 'ThrottleBreachLogSec' # интервал задаётся параметром
+    }
 }
 
 Describe 'Троттлинг: правило выгрузки моделей' {

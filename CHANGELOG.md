@@ -28,6 +28,12 @@
 - Новые параметры демона: `-ThrottleMinFreeMemPct`, `-ThrottleMaxCpuPct`,
   `-ThrottleResumeMemPct`, `-ThrottleResumeCpuPct`, `-ThrottleMinGapSec`,
   `-ThrottleMode enforce|report`, `-NoRunnerPriority`, `-OllamaHost`.
+- `mcp-watchdog 0.6.1` — нарушение порогов видно в журнале и в `current.json`
+  (`resourceThrottle.breached`), даже когда ни одна модель не загружена: раньше
+  такой случай молчал, и источник нехватки памяти или процессорного времени
+  приходилось искать вслепую. Интервал записи — `-ThrottleBreachLogSec`
+  (по умолчанию 600 с), чтобы журнал не забивался одинаковыми строками.
+  Решение о выгрузке и сами пороги 0.6.0 не изменились.
 - Переменные окружения экономного инференса: `INVR_LLM_NUM_CTX`,
   `INVR_LLM_KEEP_ALIVE`, `INVR_LLM_NUM_THREAD`, `INVR_LLM_NUM_PREDICT`,
   `INVR_LLM_NUM_BATCH`, `INVR_LLM_MODEL_ALLOW`.
