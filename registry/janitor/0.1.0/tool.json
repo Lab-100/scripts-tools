@@ -1,0 +1,34 @@
+{
+  "schema": "invr.tool/1",
+  "name": "janitor",
+  "version": "0.1.0",
+  "description": "Безопасный чистильщик мусора opencode: уборка временных и устаревших файлов через карантин вместо удаления. По умолчанию — сухой прогон, реальное действие только при явном --yes и \"dryRun\": false в конфиге (единая точка isReal). Кандидат проходит 8 гвардов конъюнкцией (protect, git с fail-closed, известное правило, мёртвый владелец, занятость, возраст, иммунитет по обращениям, порт сервиса); удаление — только purge из карантина по сроку. Поставка самодостаточна: CLI + библиотеки + конфиг + правила + README, без внешних зависимостей; дополнены MCP-сервером janitor и фоновым режимом --watch (замок janitor.lock с heartbeat).",
+  "entry": "janitor.mjs",
+  "type": "script",
+  "requires": {
+    "node": ">=20"
+  },
+  "dependencies": [],
+  "interfaces": {
+    "cli": {
+      "invoke": "node {entry} <команда>",
+      "commands": [
+        "scan",
+        "clean",
+        "purge",
+        "restore <id|path>",
+        "status",
+        "explain <path>",
+        "compact",
+        "--watch",
+        "--yes",
+        "--dry-run",
+        "--json"
+      ]
+    }
+  },
+  "compat": {
+    "breaks": []
+  },
+  "published": "2026-10-20"
+}

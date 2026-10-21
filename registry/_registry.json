@@ -42,7 +42,11 @@
     },
     {
       "name": "infra-graph",
-      "latest": "0.9.2"
+      "latest": "0.10.0"
+    },
+    {
+      "name": "janitor",
+      "latest": "0.1.0"
     },
     {
       "name": "layr",
@@ -93,5 +97,5 @@
       "latest": "0.2.0"
     }
   ],
-  "lastUpdated": "2026-10-17"
+  "lastUpdated": "2026-10-20"
 }

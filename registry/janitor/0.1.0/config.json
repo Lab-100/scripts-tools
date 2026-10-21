@@ -1,0 +1,14 @@
+{
+  "schema": "janitor.config/1",
+  "autoStart": true,
+  "dryRun": true,
+  "windowDays": 30,
+  "decay": 0.9,
+  "theta": 10,
+  "quarantineDays": 30,
+  "intervalMin": 60,
+  "minAgeMinutes": 60,
+  "roots": [],
+  "refs": { "etw": false },
+  "protect": ["**/secrets/**", "**/node_modules/**", "**/state.json", "**/opencode.db*", "**/*.git/**", "**/auth.json", "**/bridge/inbox/**", "**/bridge/outbox/**", "**/*.lock", "**/janitor/**"]
+}
