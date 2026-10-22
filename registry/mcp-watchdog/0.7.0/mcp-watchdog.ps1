@@ -55,7 +55,9 @@
 #      перепроверяет сам демон перед закрытием. Дополнительно демон не закрывает
 #      conhost с ЖИВЫМ родителем (это консоль работающего приложения: у неё нет ни
 #      окна, ни дочерних процессов, но закрытие хоста оборвёт приложение).
-#   e) ПАРАМЕТРЫ: -ReapMode report|enforce (по умолчанию report), -ReapOnce
+#   e) ПАРАМЕТРЫ: -ReapMode report|enforce (НЕ задан — режим берётся из файла
+#      политики; заводское значение параметра report действует лишь тогда, когда
+#      файла нет или в нём нет "mode"), -ReapOnce
 #      (одиночный проход зачистки и выход — для проверки; блокировку демона не берёт,
 #      pid-файл не трогает, от opencode не зависит), -ReapMinGapSec 300, -ReapPolicyPath.
 #      Политика читается из config\reap-policy.json (рядом со скриптом или в -RuntimeDir);
@@ -228,9 +230,11 @@ param(
     [switch]$NoRunnerPriority,
     [string]$OllamaHost = '',
     # --- зачистка лишних процессов (0.7.0, первый этап: безопасный класс 0) ---
-    # report (по умолчанию) — только наблюдение: кандидаты в журнал и current.json,
+    # report (заводское значение) — только наблюдение: кандидаты в журнал и current.json,
     #   ничего не закрывается. enforce — закрывается ТОЛЬКО tier 0 (сироты-обёртки
     #   conhost/uv/uvx без окна, дубли-обёртки) и только при нехватке памяти.
+    # ВАЖНО: если ключ -ReapMode не задан в командной строке, действует "mode" из
+    #   config\reap-policy.json (сейчас enforce); значение ниже — лишь заводской запас.
     [ValidateSet('enforce','report')]
     [string]$ReapMode = 'report',
     # одиночный проход зачистки без ожидания цикла демона (для проверок и отчётов)
@@ -487,12 +491,20 @@ if (-not $ReapPolicyFile) {
 }
 $script:reapPolicy = $null
 if (Get-Command -Name Get-InvrReapPolicy -ErrorAction SilentlyContinue) {
-    # Параметры командной строки главнее файла: -ReapMinGapSec и -ReapMode.
-    # Режим по умолчанию — report: кандидаты публикуются, но ничего не закрывается.
-    $script:reapPolicy = Get-InvrReapPolicy -Path $ReapPolicyFile -Override @{
-        minGapSec = $ReapMinGapSec
-        mode      = $ReapMode
-    }
+    # Параметры командной строки главнее файла — но ТОЛЬКО явно заданные.
+    # Раньше в Override всегда попадали значения по умолчанию (-ReapMode 'report',
+    # -ReapMinGapSec 300), и они перекрывали файл config\reap-policy.json: демон
+    # работал в report, хотя в конфиге стоит "mode": "enforce". Теперь ключ -ReapMode
+    # не задан — действует режим из файла; задан -ReapMode report — report.
+    # $PSBoundParameters доступен на уровне скрипта (проверено фактически: без
+    # аргументов он пуст, с аргументами содержит их имена).
+    $reapOverride = @{}
+    if ($PSBoundParameters.ContainsKey('ReapMinGapSec')) { $reapOverride.minGapSec = $ReapMinGapSec }
+    if ($PSBoundParameters.ContainsKey('ReapMode'))       { $reapOverride.mode      = $ReapMode }
+    $script:reapPolicy = Get-InvrReapPolicy -Path $ReapPolicyFile -Override $reapOverride
+    # Фактический режим (файл + переопределения) — единственный источник правды для
+    # журнала, сводки current.json и записей state\killed.jsonl.
+    if ($script:reapPolicy -and $script:reapPolicy.mode) { $ReapMode = [string]$script:reapPolicy.mode }
 } else {
     Write-Log 'WARN' 'зачистка: функции политики недоступны (reap-lib.ps1 не подключён) — проходы зачистки отключены.'
 }

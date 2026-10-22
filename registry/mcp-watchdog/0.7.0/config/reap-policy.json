@@ -1,141 +1,53 @@
 {
+  "version": "1.0.0",
+  "updated": "2026-10-18T09:00:00Z",
+  "mode": "enforce",
+  "enforceClasses": [0],
   "memory": {
-    "minFreePct": 10.0,
-    "resumeFreePct": 15.0,
-    "absoluteMinFreeMb": 200.0
+    "startPct": 10.0,
+    "resumePct": 15.0,
+    "minFreeMb": 200.0,
+    "minFreeMbHard": 50.0,
+    "neverIncreaseAggroBelowMb": 200.0
   },
-  "antiFlutter": {
-    "minGapSec": 300,
-    "maxActionsPerPass": 3,
-    "maxActionsPerHour": 10
+  "throttle": {
+    "minGapSec": 300.0,
+    "maxActionsPerRun": 3.0,
+    "maxActionsPerHour": 10.0,
+    "cooldownOnLowGain": true
   },
-  "cpuActiveSec": 0.5,
-  "idleSec": {
-    "pwsh": 900,
-    "python": 600,
-    "pythonw": 600,
-    "node": 300,
-    "uv": 600,
-    "conhost": 1800
+  "groups": {
+    "tier0": {
+      "enabled": true,
+      "include": [
+        { "pattern": "conhost.exe", "reason": "shell-orphan", "maxAgeSec": 300.0, "requireNoMainWindow": true },
+        { "pattern": "uv.exe", "reason": "uv-orphan", "maxAgeSec": 60.0, "requireNoParent": true },
+        { "pattern": "uvx.exe", "reason": "uvx-orphan", "maxAgeSec": 60.0, "requireNoParent": true }
+      ]
+    },
+    "tier1": {
+      "enabled": true,
+      "minFreePct": 5.0,
+      "include": [
+        { "pattern": "pwsh.exe", "reason": "shell-idle", "idleSec": 900.0, "maxActions": 6.0 },
+        { "pattern": "powershell.exe", "reason": "shell-idle", "idleSec": 900.0, "maxActions": 6.0 },
+        { "pattern": "node.exe", "reason": "runtime-idle", "idleSec": 300.0, "maxActions": 4.0 },
+        { "pattern": "nodejs.exe", "reason": "runtime-idle", "idleSec": 300.0, "maxActions": 4.0 },
+        { "pattern": "python.exe", "reason": "runtime-idle", "idleSec": 600.0, "maxActions": 8.0 },
+        { "pattern": "py.exe", "reason": "runtime-idle", "idleSec": 600.0, "maxActions": 8.0 }
+      ]
+    },
+    "tier2": {
+      "enabled": true,
+      "minFreePct": 5.0,
+      "include": [
+        { "pattern": "msedgewebview2.exe", "reason": "wv2-orphan", "idleSec": 1800.0, "maxActions": 4.0 }
+      ]
+    }
   },
-  "classes": {
-    "class1Names": [ "pwsh", "node", "python", "pythonw", "uv" ],
-    "class2Names": [ "msedgewebview2" ],
-    "duplicateWrapperNames": [ "cmd", "conhost", "uv", "wscript", "cscript" ]
-  },
-  "protected": {
-    "names": [
-      "oc",
-      "opencode",
-      "opencode-cli",
-      "watchdog",
-      "mcp-watchdog",
-      "guardian",
-      "mcp-watchdog-guardian",
-      "monitor",
-      "infra-graph",
-      "cline",
-      "cline-cli",
-      "multitool",
-      "code",
-      "code-insiders",
-      "idea",
-      "idea64",
-      "pycharm",
-      "pycharm64",
-      "webstorm",
-      "webstorm64",
-      "devenv",
-      "rider",
-      "goland",
-      "clion",
-      "studio64",
-      "postgres",
-      "postgresql",
-      "pg_ctl",
-      "sqlservr",
-      "mysqld",
-      "mongod",
-      "redis-server",
-      "docker",
-      "docker desktop",
-      "com.docker.backend",
-      "com.docker.build",
-      "docker-proxy",
-      "vmmem",
-      "vmmemwsl",
-      "vmwp",
-      "wslservice",
-      "wslhost",
-      "wsl",
-      "dockerd",
-      "lmgrd",
-      "lmadmin",
-      "hasplmv",
-      "hasp",
-      "lmutil",
-      "system",
-      "registry",
-      "idle",
-      "smss",
-      "csrss",
-      "wininit",
-      "services",
-      "lsass",
-      "winlogon",
-      "svchost",
-      "dwm",
-      "explorer",
-      "fontdrvhost",
-      "ctfmon",
-      "sihost",
-      "taskhostw",
-      "runtimebroker",
-      "searchindexer",
-      "spoolsv",
-      "audiodg",
-      "shellexperiencehost",
-      "startmenuexperiencehost",
-      "textinputhost",
-      "securityhealthservice",
-      "msmpeng",
-      "msmpengcp",
-      "nissrv",
-      "taskmgr",
-      "sppsvc",
-      "winmgmt",
-      "wmiprvse",
-      "dllhost",
-      "backgroundtaskhost",
-      "trustedinstaller",
-      "tiworker",
-      "msiexec",
-      "usocoreworker",
-      "usoclient"
-    ],
-    "cmdlinePatterns": [
-      "mcp-watchdog",
-      "infra-graph",
-      "mcp-watchdog-guardian",
-      "opencode",
-      "MultiTool",
-      "MultiTool.exe",
-      "cline-cli",
-      "llm_mcp_server",
-      "firecrawl-mcp",
-      "mcp gateway run"
-    ],
-    "browserNames": [
-      "msedge",
-      "chrome",
-      "firefox",
-      "iexplore",
-      "brave",
-      "yandex",
-      "opera",
-      "msedgewebview2"
-    ]
-  },
-  "mode": "report",
-  "enforceClasses": [ 0 ]
+  "actions": {
+    "softClose": true,
+    "graceWaitMs": 5000,
+    "postGraceStopNoForceMs": 3000
+  }
 }
