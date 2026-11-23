@@ -1,0 +1,12 @@
+{
+  "_note": "Правило test-locks (**/test-*.lock) перекрывается защитой **/*.lock в config.json: lock-файлы намеренно не удаляются. Правило сохранено для совместимости.",
+  "schema": "janitor.rules/1",
+  "rules": [
+  { "id": "config-backup", "glob": "opencode.jsonc.bak-*", "kind": "backup", "keepDays": 7, "requireOriginal": true },
+  { "id": "generic-bak", "glob": "**/*.bak-*", "kind": "backup", "keepDays": 7 },
+  { "id": "before-clean", "glob": "**/*.before-clean", "kind": "backup", "keepDays": 30 },
+  { "id": "orphan-tmp", "glob": "**/*.tmp", "kind": "temp", "requireDeadPid": true, "minAgeMin": 60 },
+  { "id": "test-locks", "glob": "**/test-*.lock", "kind": "lock", "requireDeadPid": true, "minAgeMin": 60 },
+  { "id": "rotated-logs", "glob": "rotation/*.log", "kind": "log", "rotateAtMb": 10, "keepMb": 5, "servicePort": null },
+  { "id": "quarantine-purge", "glob": "janitor/quarantine/**", "kind": "quarantine", "keepDays": 30 }
+] }
