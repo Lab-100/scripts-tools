@@ -1495,7 +1495,7 @@ function Save-Current {
         checks            = $Results
         openTickets       = @($Tickets | Where-Object { $_ })
         policy            = [ordered]@{
-            model         = '0.7.0'
+            model         = '0.7.1'
             # 'owner-decides': решение о завершении принимает владелец узла;
             # демон публикует кандидатов, но сам ничего не завершает.
             unload         = $(if ($AllowUnload) { 'candidates-only(осознанно, -AllowUnload не включён автопроцесса)' } else { 'owner-decides' })
