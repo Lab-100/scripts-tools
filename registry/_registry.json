@@ -22,7 +22,7 @@
     },
     {
       "name": "dmr-router",
-      "latest": "0.2.0"
+      "latest": "0.3.0"
     },
     {
       "name": "doc-extract",
@@ -101,5 +101,5 @@
       "latest": "0.2.0"
     }
   ],
-  "lastUpdated": "2026-11-23"
+  "lastUpdated": "2026-11-24"
 }

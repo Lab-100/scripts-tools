@@ -1,7 +1,7 @@
 {
   "schema": "invr.project/1",
   "name": "scripts-tools",
-  "version": "0.12.0",
+  "version": "0.14.0",
   "description": "Реестр версий инструментов оркестрации INVR (паттерн registry/<tool>/<version> + tool.json + latest.txt), плоские шимы *.ps1 в корне проекта и локер resolve-tools",
   "owner": "Lab-100",
   "privacy": "public",
@@ -11,7 +11,7 @@
     "backup-util": "0.3.x",
     "browsertool": "0.1.x",
     "dmr-model": "0.2.x",
-    "dmr-router": "0.2.x",
+    "dmr-router": "0.3.x",
     "doc-extract": "0.3.x",
     "firecrawl-key": "0.2.x",
     "gordon": "0.4.x",

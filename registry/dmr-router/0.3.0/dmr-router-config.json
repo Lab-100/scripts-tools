@@ -1,0 +1,66 @@
+{
+  "endpoint": {
+    "baseUrl": "http://127.0.0.1:12434",
+    "chatCompletions": "/engines/llama.cpp/v1/chat/completions",
+    "note": "OpenAI-совместимый эндпоинт Docker Model Runner; /v1/models используется для проверки установки."
+  },
+  "systemPrompt": "Ты — локальный технический ассистент оркестратора OpenCode на Windows/PowerShell. Отвечай по-русски, кратко и по делу, без преамбул и без повторения вопроса. Команды и пути — в блоке кода.",
+  "models": {
+    "fast": {
+      "repo": "ai/llama3.2",
+      "tag": "1B-Q4_0",
+      "apiName": "ai/llama3.2:1B-Q4_0",
+      "minFreeGB": 0.5,
+      "residentHint": "c682bd9c5f3d",
+      "note": "Самый быстрый (~80 ток/с на GPU): короткие вопросы, суммаризации, черновики."
+    },
+    "lite": {
+      "repo": "ai/qwen2.5",
+      "tag": "3B-Q4_K_M",
+      "apiName": "ai/qwen2.5:3B-Q4_K_M",
+      "minFreeGB": 0.5,
+      "residentHint": "41045df49cc0",
+      "note": "Рабочая лошадка (~33 ток/с на GPU, 1,80 ГиБ): большинство задач и код."
+    },
+    "heavy": {
+      "repo": "ai/qwen3",
+      "tag": "4B-Q4_K_M-vulkan",
+      "apiName": "local",
+      "endpoint": "http://127.0.0.1:12435",
+      "chatCompletions": "/v1/chat/completions",
+      "chatTemplateKwargs": { "enable_thinking": false },
+      "minFreeGB": 0.5,
+      "residentHint": "",
+      "note": "Qwen3-4B-Q4_K_M (2,5 ГБ) на локальном Vulkan-раннере Intel HD Graphics 630; восьмибильная модель не влезает в VRAM GTX 1050 = 4 ГБ и заменена на 4B. Веса уже загружены в раннер, порог 0,5 ГБ — только страховка от свопа."
+    },
+    "fallback": {
+      "repo": "ai/smollm2",
+      "tag": "latest",
+      "apiName": "ai/smollm2",
+      "minFreeGB": 0.5,
+      "residentHint": "354bf30d0aa3",
+      "note": "Не для продукта: на простых промптах отвечает эхом. Только как аварийный мини-резерв."
+    }
+  },
+  "memory": {
+    "heavyMinFreeGB": 0.5,
+    "heavyMinFreeGBDeep": 0.5,
+    "liteMinFreeGB": 0.5,
+    "note": "Раннеры (DMR и локальный Vulkan) держат веса моделей в своей памяти; порог свободной ОЗУ Windows — только страховка от свопа, а не ёмкость модели."
+  },
+  "classifier": {
+    "keywords": [
+      "архитектур", "архитектура", "architected", "рефактор", "рефакторинг", "refactor",
+      "отлад", "дебаг", "debug", "диагности", "анализ", "разбор", "analyz", "исследуй",
+      "спроектируй", "проектир", "design", "adr", "модул", "интеграц", "миграц",
+      "тест", "тесты", "покрыти", "тестир", "unit", "pytest", "юнит",
+      "оптимиз", "производительност", "performance", "алгоритм", "сложност", "sql",
+      "сравни", "обзор", "ревью", "code review", "план", "стратег", "исслед"
+    ],
+    "probePrompt": "Одно слово: работаешь?",
+    "probeMaxTokens": 16
+  },
+  "timeouts": {
+    "requestSec": 900
+  }
+}
