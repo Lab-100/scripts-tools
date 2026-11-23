@@ -1,0 +1,64 @@
+{
+  "endpoint": {
+    "baseUrl": "http://127.0.0.1:12434",
+    "chatCompletions": "/engines/llama.cpp/v1/chat/completions",
+    "note": "OpenAI-совместимый эндпоинт Docker Model Runner; /v1/models используется для проверки установки."
+  },
+  "systemPrompt": "Ты — локальный технический ассистент оркестратора OpenCode на Windows/PowerShell. Отвечай по-русски, кратко и по делу, без преамбул и без повторения вопроса. Команды и пути — в блоке кода.",
+  "models": {
+    "fast": {
+      "repo": "ai/llama3.2",
+      "tag": "1B-Q4_0",
+      "apiName": "ai/llama3.2:1B-Q4_0",
+      "minFreeGB": 2.0,
+      "residentHint": "c682bd9c5f3d",
+      "note": "Самый быстрый (~80 ток/с на GPU): короткие вопросы, суммаризации, черновики."
+    },
+    "lite": {
+      "repo": "ai/qwen2.5",
+      "tag": "3B-Q4_K_M",
+      "apiName": "ai/qwen2.5:3B-Q4_K_M",
+      "minFreeGB": 3.5,
+      "residentHint": "41045df49cc0",
+      "note": "Рабочая лошадка (~33 ток/с на GPU, 1,80 ГиБ): большинство задач и код."
+    },
+    "heavy": {
+      "repo": "ai/qwen3",
+      "tag": "latest",
+      "apiName": "ai/qwen3",
+      "minFreeGB": 7.0,
+      "residentHint": "977d1540140c",
+      "liveBlocked": true,
+      "liveBlockedReason": "недоступна на этой машине: VRAM GTX 1050 = 4 ГБ, а веса 4,68 ГиБ -> ошибка ggml_vulkan ErrorOutOfDeviceMemory; на CPU модель своппится (0,2 ток/с) и занимает ~10 ГБ WS. Сними liveBlocked после установки модели, влезающей в 4 ГБ VRAM.",
+      "note": "Qwen3-8B-Q4_K_M (4,68 ГиБ): архитектура, разбор, рефакторинг. Только для DryRun/планирования; в живом запросе каскад идёт в lite."
+    },
+    "fallback": {
+      "repo": "ai/smollm2",
+      "tag": "latest",
+      "apiName": "ai/smollm2",
+      "minFreeGB": 1.0,
+      "residentHint": "354bf30d0aa3",
+      "note": "Не для продукта: на простых промптах отвечает эхом. Только как аварийный мини-резерв."
+    }
+  },
+  "memory": {
+    "heavyMinFreeGB": 7.0,
+    "heavyMinFreeGBDeep": 9.0,
+    "liteMinFreeGB": 3.5
+  },
+  "classifier": {
+    "keywords": [
+      "архитектур", "архитектура", "architected", "рефактор", "рефакторинг", "refactor",
+      "отлад", "дебаг", "debug", "диагности", "анализ", "разбор", "analyz", "исследуй",
+      "спроектируй", "проектир", "design", "adr", "модул", "интеграц", "миграц",
+      "тест", "тесты", "покрыти", "тестир", "unit", "pytest", "юнит",
+      "оптимиз", "производительност", "performance", "алгоритм", "сложност", "sql",
+      "сравни", "обзор", "ревью", "code review", "план", "стратег", "исслед"
+    ],
+    "probePrompt": "Одно слово: работаешь?",
+    "probeMaxTokens": 16
+  },
+  "timeouts": {
+    "requestSec": 900
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "dmr-router",
+  "version": "0.2.0",
+  "entry": "dmr-router.ps1",
+  "description": "Роутер локальных моделей Docker Model Runner: авто-выбор fast/lite/heavy по задаче и свободной памяти, каскад heavy -> lite -> fallback с реальной пробой модели. Учёт резидентных моделей (уже в памяти раннера) и заблокированных для живого запроса ролей (liveBlocked).",
+  "params": {
+    "Ask": "Текст задачи (обязателен, позиционный)",
+    "Mode": "auto | lite | heavy | fast (по умолчанию auto)",
+    "Task": "short | normal | deep — влияет на порог свободной памяти для heavy",
+    "DryRun": "Показать решение без запроса к модели",
+    "Json": "Машиночитаемый вывод (model, text, seconds, tokensPerSecond, reasons, cascadeTried)"
+  },
+  "models": {
+    "fast": "ai/llama3.2:1B-Q4_0 (~80 ток/с на GPU, 0,72 ГиБ)",
+    "lite": "ai/qwen2.5:3B-Q4_K_M (~33 ток/с на GPU, 1,80 ГиБ)",
+    "heavy": "ai/qwen3 (Qwen3-8B-Q4_K_M, 4,68 ГиБ) — liveBlocked: VRAM GTX 1050 = 4 ГБ, в живом запросе каскад идёт в lite",
+    "fallback": "ai/smollm2 — аварийный мини-резерв, всегда хвост каскада"
+  },
+  "requires": {
+    "service": "Docker Model Runner (порт 12434)",
+    "env": ["INVR_DMR_ROUTER_CONFIG (необязательно, по умолчанию конфиг рядом с инструментом)"]
+  },
+  "install_models": "Модели ставятся инструментом dmr-model (docker model в Docker Desktop 4.92 отсутствует).",
+  "changelog": {
+    "0.2.0": [
+      "fallback добавлен в хвост каскада во всех режимах (раньше роль не попадала в $order никогда)",
+      "роль с liveBlocked пропускается в живом запросе (8B не уходит в 10-минутную попытку на GPU 4 ГБ)",
+      "порог minFreeGB не выкидывает резидентную модель — если она уже в памяти раннера, проба решает",
+      "одна выборка процессов llama-server на запуск вместо ходок в WMI из цикла"
+    ],
+    "0.1.0": "Первая версия: классификатор задач, пороги памяти, каскад с пробой, DryRun/Json."
+  }
+}

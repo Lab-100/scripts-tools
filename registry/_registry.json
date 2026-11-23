@@ -18,11 +18,11 @@
     },
     {
       "name": "dmr-model",
-      "latest": "0.1.0"
+      "latest": "0.2.0"
     },
     {
       "name": "dmr-router",
-      "latest": "0.1.0"
+      "latest": "0.2.0"
     },
     {
       "name": "doc-extract",
@@ -34,7 +34,7 @@
     },
     {
       "name": "gordon",
-      "latest": "0.3.0"
+      "latest": "0.4.0"
     },
     {
       "name": "gordon-chat",
@@ -66,7 +66,7 @@
     },
     {
       "name": "opencode-monitor",
-      "latest": "0.4.0"
+      "latest": "0.5.0"
     },
     {
       "name": "opencode-plugins",
@@ -97,5 +97,5 @@
       "latest": "0.2.0"
     }
   ],
-  "lastUpdated": "2026-10-20"
+  "lastUpdated": "2026-11-23"
 }

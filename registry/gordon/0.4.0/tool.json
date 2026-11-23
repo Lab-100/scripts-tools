@@ -1,0 +1,31 @@
+{
+  "name": "gordon",
+  "version": "0.4.0",
+  "entry": "gordon.ps1",
+  "description": "Роутер Гордона: сначала облачные провайдеры по списку ключей, затем двухуровневый локальный фолбэк — dmr-router (авто-выбор fast/lite, каскад heavy -> lite -> fallback), затем docker agent --model local.",
+  "params": {
+    "Prompt": "Текст запроса (обязателен)",
+    "AgentFile": "Путь к gordon.yaml (по умолчанию ~/.agents/gordon.yaml)",
+    "ProvidersJson": "Явный путь к списку провайдеров",
+    "GordonTimeoutSec": "Предел ожидания (таймаут/timeout) канала Gordon Desktop, с (по умолчанию 300)",
+    "ShowAll": "Показывать ответы всех опробованных провайдеров",
+    "Local": "Только локальный роутер dmr-router, без облачных провайдеров"
+  },
+  "aliases": {
+    "docker_agent_model_fast": "docker agent run <gordon.yaml> --model fast --exec <запрос>  (ai/llama3.2:1B-Q4_0)",
+    "docker_agent_model_lite": "docker agent run <gordon.yaml> --model lite --exec <запрос>  (ai/qwen2.5:3B-Q4_K_M)",
+    "docker_agent_model_heavy": "docker agent run <gordon.yaml> --model heavy --exec <запрос>  (ai/qwen3; живой запрос лучше давать через dmr-router — там heavy помечена liveBlocked)"
+  },
+  "requires": {
+    "service": ["Docker Desktop (для docker agent и Gordon Desktop)", "Docker Model Runner, порт 12434"],
+    "tools": ["dmr-router (фолбэк уровня 1)", "gordon-chat (канал Gordon Desktop, npipe)"]
+  },
+  "changelog": {
+    "0.4.0": [
+      "двухуровневый фолбэк: dmr-router (JSON) -> docker agent --model local",
+      "режим -Local: только локальный роутер, облачные провайдеры пропущены",
+      "алиасы fast/lite/heavy для docker agent добавлены в gordon.yaml"
+    ],
+    "0.3.0": "Провайдер gordon-desktop (npipe), ротация по gordon-providers.json."
+  }
+}
