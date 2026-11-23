@@ -1,0 +1,41 @@
+{
+  "schema": "invr.tool/1",
+  "name": "system-map",
+  "version": "0.1.1",
+  "description": "Единая живая карта инфраструктуры оркестратора: узлы и направленные связи opencode/субагенты/плагины/MCP/демоны/провайдеры/пул ИИ, состояния с цветовой дифференциацией, метрики CPU/RAM/VRAM/GPU/дисков, активные сессии, лимиты и блокировки провайдеров. Режим сбора пишет snapshot.json, режим -Serve поднимает локальный веб-интерфейс на 127.0.0.1 с анимированным SVG-графом. Версия 0.1.1: подписи целиком внутри фигур без обрезки, перетаскивание узлов мышью с сохранением раскладки, кнопки фильтров «спящие» и «неактивные» с возможностью повторного включения, начальная раскладка с минимизацией пересечений связей.",
+  "entry": "system-map.ps1",
+  "type": "script",
+  "requires": {
+    "pwsh": ">=7.0",
+    "python": ">=3.9",
+    "node": ">=18 (только для -Serve)",
+    "pythonPackages": ["psutil (опционально; без него часть метрик недоступна)"]
+  },
+  "dependencies": [],
+  "interfaces": {
+    "cli": {
+      "invoke": "pwsh -NoProfile -File {entry}",
+      "commands": ["-Json", "-Serve [-Port 8765]", "-NoState", "-StateDir <путь>", "-Db <путь>", "-PythonExe <путь>"]
+    },
+    "http": {
+      "bind": "127.0.0.1",
+      "port": 8765,
+      "routes": ["/", "/api/state", "/api/refresh", "/api/health"]
+    },
+    "exitCodes": {
+      "0": "снимок собран / сервер запущен",
+      "1": "сбой окружения (нет python/node/файлов инструмента)"
+    },
+    "state": {
+      "json": "<tools>\\system-map\\state\\snapshot.json (атомарная запись)",
+      "cache": "<tools>\\system-map\\state\\*.cache.json (GPU 30 с, ollama 15 с, Lab100 90 с)"
+    }
+  },
+  "compat": {
+    "breaks": []
+  },
+  "notes": "Только чтение внешних источников: state-файлы mcp-watchdog/monitor/guardian/run-watch, opencode.db в режиме ro, env и конфиг gordon, psutil/WMI. Изменения — только внутри system-map\\state\\. Веб-сервер слушает только петлевой адрес и не имеет внешних npm-зависимостей. GPU-метрики: WMI Win32_VideoController + счётчики \\GPU Engine(*), при недоступности — частично. Машинные пути не зашиты: INVR_TOOLS_ROOT, INVR_NODE_EXE, INVR_OPENCODE_DB, INVR_LAB100_ROOT, INVR_PLUGINS_DIR.",
+  "author": "Lab-100",
+  "created": "2026-11-23",
+  "keywords": ["карта", "граф", "мониторинг", "агенты", "субагенты", "провайдеры", "железо", "opencode", "перетаскивание", "фильтры", "раскладка"]
+}
