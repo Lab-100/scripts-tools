@@ -16,7 +16,9 @@
   это не секреты, и правила срабатывают только на ЛИТЕРАЛЫ значений и строки
   подключения. Дополнительно отсекаются плейсхолдеры (sk-..., YOUR_*, <...>,
   ${...}, $env:*, changeme, redacted, xxx, ***, example.com, localhost,
-  127.0.0.1), пустые значения и значения короче минимальной длины.
+  127.0.0.1), пустые значения и значения короче минимальной длины. Выражения
+  PowerShell ([pscustomobject]@{...}, $(...), @{...}, @(...)) не являются литералами
+  и отсекаются отдельно.
 
   Код возврата: 0 — находок нет, 1 — есть находки (для CI), 2 — ошибка запуска.
 
@@ -108,6 +110,9 @@ function Test-IsSecretLiteral {
     param([string]$Value)
     if ([string]::IsNullOrWhiteSpace($Value)) { return $false }
     $v = $Value.Trim()
+    # Выражение/тип PowerShell — не литерал: `$pass = [pscustomobject]@{...}`
+    # не является паролем, как и `$x = @{...}`, `$(...)` или `@(...)`.
+    if ($v -match '^(\[|\{|\$\(|\@\()') { return $false }
     if ($v -match $placeholderPattern) { return $false }
     if ($v -match $placeholderSubstring) { return $false }
     if ($v.Length -lt $script:MinSecretLength) { return $false }
