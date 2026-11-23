@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>system-map — живая карта инфраструктуры</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <div class="title">
+    <h1>Карта системы</h1>
+    <span id="updated" class="muted">загрузка…</span>
+  </div>
+  <div id="legend" class="legend"></div>
+  <div class="controls">
+    <label><input type="checkbox" id="showIdle" checked> простаивающие</label>
+    <label><input type="checkbox" id="showUnloaded" checked> выгруженные</label>
+    <button id="refresh" title="принудительный сбор">обновить</button>
+  </div>
+</header>
+
+<div id="alerts" class="alerts"></div>
+
+<main>
+  <section id="graph-wrap">
+    <svg id="graph" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"></path>
+        </marker>
+        <marker id="arrow-hot" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#38bdf8"></path>
+        </marker>
+        <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+          <feGaussianBlur stdDeviation="4" result="b"></feGaussianBlur>
+          <feMerge><feMergeNode in="b"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge>
+        </filter>
+      </defs>
+      <g id="edges"></g>
+      <g id="nodes"></g>
+    </svg>
+    <div id="tooltip" class="tooltip"></div>
+  </section>
+
+  <aside id="panel">
+    <div class="card" id="card-system"><h3>Система</h3><div class="body"></div></div>
+    <div class="card" id="card-cpu"><h3>Процессор</h3><div class="body"></div></div>
+    <div class="card" id="card-memory"><h3>Память</h3><div class="body"></div></div>
+    <div class="card" id="card-gpu"><h3>Видеокарты</h3><div class="body"></div></div>
+    <div class="card" id="card-disks"><h3>Диски</h3><div class="body"></div></div>
+    <div class="card" id="card-opencode"><h3>opencode / агенты</h3><div class="body"></div></div>
+    <div class="card" id="card-providers"><h3>Провайдеры / лимиты</h3><div class="body"></div></div>
+    <div class="card" id="card-daemons"><h3>Демоны</h3><div class="body"></div></div>
+    <div class="card" id="card-detail"><h3>Выбранный узел</h3><div class="body muted">нажмите на узел графа</div></div>
+  </aside>
+</main>
+
+<footer>
+  <span id="footer-stat"></span>
+  <span class="muted">обновление каждые 2 с · только локальный адрес 127.0.0.1</span>
+</footer>
+<script src="/app.js"></script>
+</body>
+</html>
