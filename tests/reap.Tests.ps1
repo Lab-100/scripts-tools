@@ -177,7 +177,7 @@ Describe 'Зачистка: правило решения' {
     }
 }
 
-Describe 'Зачистка: интеграция с демоном (0.7.0)' {
+Describe 'Зачистка: интеграция с демоном (0.7.x)' {
     BeforeAll {
         $repoRoot   = Split-Path -Parent $PSScriptRoot
         $toolDir    = Join-Path (Join-Path $repoRoot 'registry') 'mcp-watchdog'
@@ -199,12 +199,12 @@ Describe 'Зачистка: интеграция с демоном (0.7.0)' {
         $script:daemon | Should -Match 'if \(-not \$Once -and -not \$ReapOnce\) \{ Set-Content -LiteralPath \$PidFile'
     }
 
-    It 'сводка current.json: schemaVersion 0.7.0 и разделы memory/reap' {
-        $script:daemon | Should -Match "schemaVersion\s*=\s*'0\.7\.0'"
+    It 'сводка current.json: schemaVersion активной версии и разделы memory/reap' {
+        # Версия берётся из latest.txt, чтобы тест не ломался при выходе 0.7.3.
+    $script:daemon | Should -Match "schemaVersion\s*=\s*'$([regex]::Escape($latest))'"
         $script:daemon | Should -Match 'memory\s*=\s*\$script:memoryReport'
         $script:daemon | Should -Match 'reap\s*=\s*\$script:reapReport'
-        $script:daemon | Should -Match "model\s*=\s*'0\.7\.0'"
-        $script:daemon | Should -Not -Match "model\s*=\s*'0\.6\.5'"
+        $script:daemon | Should -Match "model\s*=\s*'$([regex]::Escape($latest))'"
     }
 
     It 'раздел memory публикует freeMb/totalMb/freePct/procCount/orphanCount/topGroups' {

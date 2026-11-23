@@ -111,6 +111,7 @@ param(
     [int]$MirrorSec = 300,
     [int]$WaitMaxMin = 0,
     [switch]$Once,
+    [switch]$NoTray,
     [string]$RuntimeDir = '',
     [string]$WatchdogRuntimeDir = '',
     [string]$MonitorDir = '',
@@ -150,6 +151,11 @@ $MonNodesFile    = Join-Path $MonitorDir 'state\nodes.json'
 $MonShim         = Join-Path $toolsRoot 'infra-graph.ps1'
 $MonRegistryRoot = Join-Path $regRoot 'infra-graph'
 $MonNeedle       = 'infra-graph'
+# --- значок-индикатор в трее (opencode-monitor 0.5.0, правки 0.2.5) ---
+$TrayShim         = Join-Path $toolsRoot 'opencode-monitor.ps1'
+$TrayRegistryRoot = Join-Path $regRoot 'opencode-monitor'
+$TrayNeedle       = 'opencode-monitor.ps1'
+$TrayFlag         = Join-Path $StateDir 'tray.started-by-guardian.flag'
 
 function Write-Log {
     param([string]$Level, [string]$Msg)
@@ -322,6 +328,53 @@ function Start-Monitor {
     }
 }
 
+# ---- значок-индикатор в трее (opencode-monitor -TrayOnly, 0.2.5) ----
+function Test-TrayAlive {
+    $procs = @(Get-ProcsByNeedle $TrayNeedle | Where-Object { $_.ProcessId -ne $PID })
+    return [pscustomobject]@{ alive = ($procs.Count -gt 0); pids = @($procs | ForEach-Object { $_.ProcessId }); reason = "процесс(ов) opencode-monitor: $($procs.Count)" }
+}
+function Resolve-TrayEntry {
+    if (Test-Path -LiteralPath $TrayShim) { return $TrayShim }
+    $latestFile = Join-Path $TrayRegistryRoot 'latest.txt'
+    if (Test-Path -LiteralPath $latestFile) {
+        $ver = (Get-Content -LiteralPath $latestFile -Raw).Trim()
+        foreach ($cand in @((Join-Path $TrayRegistryRoot "$ver\opencode-monitor.ps1"), (Join-Path $TrayRegistryRoot "$ver\opencode-monitor.cmd"))) {
+            if (Test-Path -LiteralPath $cand) { return $cand }
+        }
+    }
+    return $null
+}
+function Start-Tray {
+    $entry = Resolve-TrayEntry
+    if (-not $entry) { Write-Log 'WARN' "не найден запуск значка в трее (шим $TrayShim, реестр $TrayRegistryRoot) — пропуск подъёма"; return $false }
+    try {
+        if ($entry.EndsWith('.ps1')) {
+            Start-Process pwsh -WindowStyle Hidden -ArgumentList '-NoProfile', '-File', $entry, '-TrayOnly' | Out-Null
+        } else {
+            Start-Process cmd.exe -WindowStyle Hidden -ArgumentList '/c', $entry, '-TrayOnly' | Out-Null
+        }
+        Write-Log 'INFO' "значок-индикатор в трее поднят (точка входа: $entry -TrayOnly)"
+        return $true
+    } catch {
+        Write-Log 'ERROR' "не удалось поднять значок в трее: $($_.Exception.Message)"
+        return $false
+    }
+}
+function Stop-TrayIfStartedByUs {
+    param([string]$FlagFile)
+    if (-not (Test-Path -LiteralPath $FlagFile)) { return $false }
+    $procs = @(Get-ProcsByNeedle $TrayNeedle | Where-Object { $_.ProcessId -ne $PID })
+    if ($procs.Count -eq 0) { Remove-Item -LiteralPath $FlagFile -Force -ErrorAction SilentlyContinue; return $false }
+    foreach ($p in $procs) {
+        try {
+            Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop
+            Write-Log 'INFO' "opencode закрыт → значок в трее (pid=$($p.ProcessId), запущен хранителем) убран."
+        } catch { Write-Log 'WARN' "не удалось завершить значок pid=$($p.ProcessId): $($_.Exception.Message)" }
+    }
+    Remove-Item -LiteralPath $FlagFile -Force -ErrorAction SilentlyContinue
+    return $true
+}
+
 # завершение монитора при закрытии opencode — только если его запустил хранитель
 function Stop-MonitorIfStartedByUs {
     param([string]$FlagFile)
@@ -409,7 +462,11 @@ if ($prior -and $prior -ne $PID -and (Test-ProcAlive -Id $prior -Needle 'mcp-wat
 Set-Content -LiteralPath $GuardianPidFile -Value $PID -Encoding ascii
 
 $MonStartedByUsFlag = Join-Path $StateDir 'monitor.started-by-guardian.flag'
-$lastStart = [DateTime]::MinValue
+# 0.2.5: троттлинг РАЗДЕЛЁН для демона, монитора и значка. Раньше один счётчик
+# обнулялся подъёмом демона, из-за чего монитор отставал на -StartThrottleSec.
+$lastStartWd   = [DateTime]::MinValue
+$lastStartMon  = [DateTime]::MinValue
+$lastStartTray = [DateTime]::MinValue
 $lastState  = ''
 $lastMirror = [DateTime]::MinValue
 
@@ -419,29 +476,29 @@ while ($true) {
     $mon = Test-MonitorAlive
     if ($oc) {
         if (-not $wd.alive) {
-            $need = (((Get-Date) - $lastStart).TotalSeconds -ge $StartThrottleSec)
+            $need = (((Get-Date) - $lastStartWd).TotalSeconds -ge $StartThrottleSec)
             if ($need) {
                 Write-Log 'WARN' "opencode работает, но демон-страж мёртв ($($wd.reason)) → автоподъём"
-                $script:lastStart = Get-Date
+                $script:lastStartWd = Get-Date
                 if (Start-Watchdog) { $lastState = 'watchdog-started' } else { $lastState = 'watchdog-fail' }
             } else {
                 if ($lastState -ne 'wd-wait') {
-                    $left = [int]($StartThrottleSec - ((Get-Date) - $lastStart).TotalSeconds)
+                    $left = [int]($StartThrottleSec - ((Get-Date) - $lastStartWd).TotalSeconds)
                     Write-Log 'INFO' "автоподъём демона отложен по троттлингу (осталось ${left}s): $($wd.reason)"
                 }
                 $lastState = 'wd-wait'
             }
         }
-        # --- монитор состояния ---
+        # --- монитор состояния (0.2.5: свой счётчик — без задержки за демоном) ---
         if (-not $mon.alive) {
-            $needM = (((Get-Date) - $lastStart).TotalSeconds -ge $StartThrottleSec)
+            $needM = (((Get-Date) - $lastStartMon).TotalSeconds -ge $StartThrottleSec)
             if ($needM) {
                 Write-Log 'WARN' "opencode работает, но монитор не работает ($($mon.reason)) → автоподъём"
-                $script:lastStart = Get-Date
+                $script:lastStartMon = Get-Date
                 if (Start-Monitor) { $lastState = 'monitor-started'; Set-Content -LiteralPath $MonStartedByUsFlag -Value $PID -Encoding ascii } else { $lastState = 'monitor-fail' }
             } else {
                 if ($lastState -ne 'mon-wait') {
-                    $left = [int]($StartThrottleSec - ((Get-Date) - $lastStart).TotalSeconds)
+                    $left = [int]($StartThrottleSec - ((Get-Date) - $lastStartMon).TotalSeconds)
                     Write-Log 'INFO' "автоподъём монитора отложен по троттлингу (осталось ${left}s): $($mon.reason)"
                 }
                 $lastState = 'mon-wait'
@@ -452,15 +509,35 @@ while ($true) {
             }
             $lastState = 'ok'
         }
+        # --- значок-индикатор в трее (0.2.5) ---
+        if (-not $NoTray) {
+            $trayInfo = Test-TrayAlive
+            if (-not $trayInfo.alive) {
+                $needT = (((Get-Date) - $lastStartTray).TotalSeconds -ge $StartThrottleSec)
+                if ($needT) {
+                    Write-Log 'WARN' "opencode работает, но значок в трее не запущен ($($trayInfo.reason)) → автоподъём"
+                    $script:lastStartTray = Get-Date
+                    if (Start-Tray) { Set-Content -LiteralPath $TrayFlag -Value $PID -Encoding ascii }
+                } else {
+                    Write-Log 'INFO' "автоподъём значка в трее отложен по троттлингу: $($trayInfo.reason)"
+                }
+            }
+        }
         # --- зеркало nodes.json (низкая нагрузка) ---
         if ($MirrorSec -le 0 -or ((Get-Date) - $lastMirror).TotalSeconds -ge $MirrorSec) {
             $lastMirror = Get-Date
             try { Write-Mirror -MonitorInfo $mon -WdInfo $wd -OcAlive $true } catch { Write-Log 'WARN' "зеркало не записано: $($_.Exception.Message)" }
         }
     } else {
-        if ($lastState -ne 'idle') { Write-Log 'INFO' "opencode не запущен → демон-страж и монитор не нужны, жду появления процесса '$ProcessName'" }
+        if ($lastState -ne 'idle') { Write-Log 'INFO' "opencode не запущен → демон-страж, монитор и значок не нужны, жду появления процесса '$ProcessName'" }
         $lastState = 'idle'
         $null = Stop-MonitorIfStartedByUs -FlagFile $MonStartedByUsFlag
+        $null = Stop-TrayIfStartedByUs -FlagFile $TrayFlag
+        # 0.2.5: зеркало пишется и без opencode — иначе в файле застыл вчерашний цикл.
+        if ($MirrorSec -le 0 -or ((Get-Date) - $lastMirror).TotalSeconds -ge $MirrorSec) {
+            $lastMirror = Get-Date
+            try { Write-Mirror -MonitorInfo ([pscustomobject]@{ alive = $false; pids = @(); ageSec = $null; reason = 'opencode не запущен' }) -WdInfo ([pscustomobject]@{ alive = $false; pid = $null; reason = 'opencode не запущен' }) -OcAlive $false } catch { }
+        }
     }
 
     if ($Once) { break }

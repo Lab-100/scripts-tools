@@ -1,0 +1,53 @@
+{
+  "version": "1.0.0",
+  "updated": "2026-10-18T09:00:00Z",
+  "mode": "enforce",
+  "enforceClasses": [0],
+  "memory": {
+    "startPct": 10.0,
+    "resumePct": 15.0,
+    "minFreeMb": 200.0,
+    "minFreeMbHard": 50.0,
+    "neverIncreaseAggroBelowMb": 200.0
+  },
+  "throttle": {
+    "minGapSec": 300.0,
+    "maxActionsPerRun": 3.0,
+    "maxActionsPerHour": 10.0,
+    "cooldownOnLowGain": true
+  },
+  "groups": {
+    "tier0": {
+      "enabled": true,
+      "include": [
+        { "pattern": "conhost.exe", "reason": "shell-orphan", "maxAgeSec": 300.0, "requireNoMainWindow": true },
+        { "pattern": "uv.exe", "reason": "uv-orphan", "maxAgeSec": 60.0, "requireNoParent": true },
+        { "pattern": "uvx.exe", "reason": "uvx-orphan", "maxAgeSec": 60.0, "requireNoParent": true }
+      ]
+    },
+    "tier1": {
+      "enabled": true,
+      "minFreePct": 5.0,
+      "include": [
+        { "pattern": "pwsh.exe", "reason": "shell-idle", "idleSec": 900.0, "maxActions": 6.0 },
+        { "pattern": "powershell.exe", "reason": "shell-idle", "idleSec": 900.0, "maxActions": 6.0 },
+        { "pattern": "node.exe", "reason": "runtime-idle", "idleSec": 300.0, "maxActions": 4.0 },
+        { "pattern": "nodejs.exe", "reason": "runtime-idle", "idleSec": 300.0, "maxActions": 4.0 },
+        { "pattern": "python.exe", "reason": "runtime-idle", "idleSec": 600.0, "maxActions": 8.0 },
+        { "pattern": "py.exe", "reason": "runtime-idle", "idleSec": 600.0, "maxActions": 8.0 }
+      ]
+    },
+    "tier2": {
+      "enabled": true,
+      "minFreePct": 5.0,
+      "include": [
+        { "pattern": "msedgewebview2.exe", "reason": "wv2-orphan", "idleSec": 1800.0, "maxActions": 4.0 }
+      ]
+    }
+  },
+  "actions": {
+    "softClose": true,
+    "graceWaitMs": 5000,
+    "postGraceStopNoForceMs": 3000
+  }
+}

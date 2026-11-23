@@ -1,4 +1,6 @@
 {
+  "schema": "invr.tool/1",
+
   "name": "dmr-model",
   "version": "0.2.0",
   "entry": "dmr-model.ps1",

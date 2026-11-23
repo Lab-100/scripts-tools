@@ -58,7 +58,7 @@
     },
     {
       "name": "mcp-watchdog",
-      "latest": "0.7.1"
+      "latest": "0.7.2"
     },
     {
       "name": "mcp-watchdog-guardian",
@@ -91,6 +91,10 @@
     {
       "name": "run-watch",
       "latest": "0.1.1"
+    },
+    {
+      "name": "system-map",
+      "latest": "0.1.0"
     },
     {
       "name": "vmdisk",
