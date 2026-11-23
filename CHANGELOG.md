@@ -6,6 +6,24 @@
 Версии инструментов в `registry/<tool>/<version>/` ведутся по semver (X.Y.Z) —
 это другая шкала, они неизменяемы и в этот журнал проекта не входят.
 
+## 0.11 — 2026-11-23
+
+### Добавлено
+
+- `system-map 0.1.0` — живой граф агентов, демонов, провайдеров и метрик железа
+  (принято из параллельной сессии): сборщик `collector.py`, сервер `server.mjs`,
+  обёртка `system-map.ps1`, веб-интерфейс и плоские шимы `start-system-map.cmd`,
+  `system-map.ps1`.
+- `mcp-watchdog 0.7.2` — надёжный поиск `throttle-lib.ps1`/`reap-lib.ps1` по реестру
+  (`INVR_REGISTRY`, `<tools-root>\registry`, `INVR_TOOLS_ROOT`) и безопасная
+  деградация без библиотек: вместо FATAL отчёт `available=false` и запасная
+  атомарная запись. Сохранены правки 0.7.1 по `INVR_DOCKER_EXE`/`INVR_NODE_EXE`
+  и выравниванию `policy.model`.
+
+### Исправлено
+
+- `tools/ci/scan-secrets.ps1` — выражения PowerShell больше не считаются секретом
+  (ложные срабатывания на `$pass = [pscustomobject]@{...}`).
 ## 0.10 — 2026-11-23
 
 ### Добавлено
