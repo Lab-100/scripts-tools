@@ -25,6 +25,10 @@
       "latest": "0.3.0"
     },
     {
+      "name": "delegation-lint",
+      "latest": "0.1.0"
+    },
+    {
       "name": "doc-extract",
       "latest": "0.3.0"
     },

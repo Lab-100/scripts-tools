@@ -1,0 +1,44 @@
+{
+  "schema": "invr.tool/1",
+  "name": "delegation-lint",
+  "version": "0.1.0",
+  "description": "Жёсткий линтер правила делегирования opencode: по последним N сессиям проверяет пять порогов (доля вызовов build, share_task, доля длинных циклов без task, среднее число детей invr-lead, доля платных каналов при живом ollama). Выход — русская таблица либо JSON, код возврата 1 при нарушениях. Данные только для чтения: opencode.db в режиме mode=ro и current.json демона-стража",
+  "entry": "delegation-lint.ps1",
+  "type": "script",
+  "requires": {
+    "pwsh": ">=7.0",
+    "python": ">=3.9"
+  },
+  "dependencies": [],
+  "interfaces": {
+    "cli": {
+      "invoke": "pwsh -NoProfile -File {entry}",
+      "commands": [
+        "-Sessions <N>",
+        "-BuildShareMax <0..1>",
+        "-ShareTaskMin <0..1>",
+        "-CyclesNoTaskMax <0..1>",
+        "-LeadChildrenMin <N>",
+        "-PaidShareMax <0..1>",
+        "-CycleMinCalls <N>",
+        "-Json",
+        "-OutFile <путь>",
+        "-DbPath <путь>",
+        "-WatchdogPath <путь>"
+      ]
+    },
+    "exitCodes": {
+      "0": "нарушений нет",
+      "1": "есть нарушения правила делегирования",
+      "2": "БД opencode недоступна или выборка пуста",
+      "3": "прочий сбой разбора"
+    }
+  },
+  "compat": {
+    "breaks": []
+  },
+  "notes": "Самостоятельная реализация: не выполняет запись состояния, не меняет БД и чужие конфиги. Путь к БД переопределяется -DbPath или INVR_OPENCODE_DB, по умолчанию %USERPROFILE%\\.local\\share\\opencode\\opencode.db. Файл -OutFile пишется в UTF-8 только по явному запросу. Пороги по умолчанию совпадают с orch-metrics: 0.60 / 0.10 / 0.25 / 1.0 / 0.30, цикл для делегирования — 20 вызовов.",
+  "author": "Lab-100",
+  "created": "2026-11-24",
+  "keywords": ["opencode", "delegation", "lint", "task", "invr-lead", "делегирование", "линтер", "проверка"]
+}
