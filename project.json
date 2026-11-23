@@ -13,6 +13,7 @@
     "dmr-model": "0.2.x",
     "dmr-router": "0.3.x",
     "doc-extract": "0.3.x",
+    "delegation-lint": "0.1.x",
     "firecrawl-key": "0.2.x",
     "gordon": "0.4.x",
     "gordon-chat": "0.2.x",
